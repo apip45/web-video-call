@@ -311,13 +311,47 @@
 .controls-right {
     display: flex;
     gap: var(--spacing-sm);
-    min-width: 80px;
+    min-width: 50px;
+    flex-shrink: 0;
 }
 
 .controls-center {
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
+    flex-shrink: 0;
+}
+
+/* Mobile horizontal scroll for controls */
+@media (max-width: 768px) {
+    .controls-bar {
+        justify-content: flex-start;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+        gap: var(--spacing-sm);
+        padding-left: var(--spacing-sm);
+        padding-right: var(--spacing-sm);
+    }
+    
+    .controls-bar::-webkit-scrollbar {
+        display: none; /* Chrome/Safari */
+    }
+    
+    .controls-left,
+    .controls-right {
+        min-width: auto;
+    }
+    
+    .controls-center {
+        gap: var(--spacing-sm);
+    }
+    
+    .control-btn {
+        flex-shrink: 0;
+    }
 }
 
 /* =============================================================================
