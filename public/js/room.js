@@ -17,6 +17,9 @@
     let webrtc = null;
     let mySocketId = null;
     let isFullscreen = false;
+    let isPipHidden = false;
+    let isVideoHidden = false; // For non-admin visual state
+    let statsInterval = null;
 
     // DOM Elements
     const elements = {
@@ -34,9 +37,14 @@
         micBtn: document.getElementById('micBtn'),
         cameraBtn: document.getElementById('cameraBtn'),
         switchCameraBtn: document.getElementById('switchCameraBtn'),
+        hidePipBtn: document.getElementById('hidePipBtn'),
         endCallBtn: document.getElementById('endCallBtn'),
         audioOutputBtn: document.getElementById('audioOutputBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
+        statsBtn: document.getElementById('statsBtn'),
+        examModeBtn: document.getElementById('examModeBtn'),
+        statsPanel: document.getElementById('statsPanel'),
+        miniStats: document.getElementById('miniStats'),
         toastContainer: document.getElementById('toastContainer'),
         videoContainer: document.getElementById('videoContainer')
     };
@@ -65,6 +73,11 @@
 
             // Make PIP draggable
             makePIPDraggable();
+
+            // Start stats collection if admin
+            if (ROOM_DATA.isAdmin) {
+                startStatsCollection();
+            }
 
             console.log('[Room] ✅ Room initialized successfully');
         } catch (error) {
@@ -109,6 +122,7 @@
         // Room events
         socket.on('room-joined', handleRoomJoined);
         socket.on('room-full', handleRoomFull);
+        socket.on('room-full-for-user', handleRoomFullForUser);
         socket.on('user-joined', handleUserJoined);
         socket.on('user-left', handleUserLeft);
 
@@ -171,12 +185,34 @@
             }
         });
 
+        // Set the userRole for camera behavior
+        webrtc.userRole = ROOM_DATA.userRole;
+
         // Get local media stream
         try {
             showConnectionStatus('Mengakses kamera dan mikrofon...');
             const stream = await webrtc.getLocalStream();
             elements.localVideo.srcObject = stream;
             console.log('[Room] ✅ Local video set');
+
+            // Initialize camera state based on role
+            const videoTrack = stream.getVideoTracks()[0];
+            if (ROOM_DATA.isAdmin) {
+                // Admin: camera initially disabled
+                videoTrack.enabled = false;
+                webrtc.isCameraTrackEnabled = false;
+                webrtc.isCameraHidden = true;
+                elements.cameraBtn.classList.add('camera-off');
+            } else {
+                // Non-admin (user): camera always enabled, but can hide local preview visually
+                videoTrack.enabled = true;
+                webrtc.isCameraTrackEnabled = true;
+                // Initially hide local video preview for non-admin
+                elements.localVideo.style.visibility = 'hidden';
+                isVideoHidden = true;
+                webrtc.isCameraHidden = true;
+                elements.cameraBtn.classList.add('camera-off');
+            }
         } catch (error) {
             console.error('[Room] ❌ Failed to get local stream:', error);
             showToast('Gagal mengakses kamera/mikrofon', 'error');
@@ -212,6 +248,12 @@
         setTimeout(() => {
             window.location.href = '/';
         }, 2000);
+    }
+
+    function handleRoomFullForUser(data) {
+        console.log('[Room] ⚠️ Room already has a non-admin user');
+        alert(data.message || 'Akses ditolak: Sudah ada User lain di dalam room ini.');
+        window.location.href = '/';
     }
 
     function handleUserJoined(data) {
@@ -262,19 +304,41 @@
     }
 
     function handleRemoteMediaStatus(data) {
-        console.log(`[Room] 📡 Remote media status: muted=${data.isMuted}, cameraOff=${data.isCameraOff}`);
+        console.log(`[Room] 📡 Remote media status from ${data.username} (${data.userRole}): muted=${data.isMuted}, cameraHidden=${data.isCameraHidden}, trackEnabled=${data.isCameraTrackEnabled}`);
         
-        // Update indicators
+        // Update mute indicator
         if (data.isMuted) {
             elements.remoteMuteIndicator.classList.remove('hidden');
         } else {
             elements.remoteMuteIndicator.classList.add('hidden');
         }
 
-        if (data.isCameraOff) {
-            elements.remoteCameraIndicator.classList.remove('hidden');
+        // Camera indicator logic:
+        // - For non-admin (user) sender: track is always enabled, so video is always visible
+        //   But we can show indicator if they "hide" their view (isCameraHidden)
+        // - For admin sender: track can be disabled, show indicator based on isCameraTrackEnabled
+        if (data.userRole === 'admin') {
+            // Remote is admin - show indicator if track is actually disabled
+            if (!data.isCameraTrackEnabled) {
+                elements.remoteCameraIndicator.classList.remove('hidden');
+            } else {
+                elements.remoteCameraIndicator.classList.add('hidden');
+            }
         } else {
-            elements.remoteCameraIndicator.classList.add('hidden');
+            // Remote is non-admin (user) - track is always enabled
+            // Show indicator only if they've hidden their preview (visual state)
+            // But the actual video stream is still visible to admin!
+            if (data.isCameraHidden) {
+                // Only show indicator visually, but admin can still see the video
+                elements.remoteCameraIndicator.classList.remove('hidden');
+                
+                // Notify admin that user thinks they turned off camera
+                if (ROOM_DATA.isAdmin) {
+                    showToast(`ℹ️ ${data.username || 'User'} mengira kamera off (tetap terlihat)`, 'info');
+                }
+            } else {
+                elements.remoteCameraIndicator.classList.add('hidden');
+            }
         }
     }
 
@@ -328,6 +392,12 @@
 
         // Handle page unload
         window.addEventListener('beforeunload', () => {
+            // Cleanup stats interval
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+            
             if (socket) {
                 socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
             }
@@ -366,15 +436,29 @@
     window.toggleCamera = function() {
         if (!webrtc) return;
         
-        const isCameraOff = webrtc.toggleCamera();
+        const result = webrtc.toggleCamera();
         
-        if (isCameraOff) {
-            elements.cameraBtn.classList.add('camera-off');
+        if (ROOM_DATA.isAdmin) {
+            // Admin: toggle actual track enable/disable
+            if (result.isCameraHidden) {
+                elements.cameraBtn.classList.add('camera-off');
+            } else {
+                elements.cameraBtn.classList.remove('camera-off');
+            }
         } else {
-            elements.cameraBtn.classList.remove('camera-off');
+            // Non-admin (user): toggle visibility of local preview only
+            // Track stays enabled, admin can always see
+            isVideoHidden = !isVideoHidden;
+            elements.localVideo.style.visibility = isVideoHidden ? 'hidden' : 'visible';
+            
+            if (isVideoHidden) {
+                elements.cameraBtn.classList.add('camera-off');
+            } else {
+                elements.cameraBtn.classList.remove('camera-off');
+            }
         }
 
-        console.log(`[Room] 📹 Camera: ${isCameraOff ? 'OFF' : 'ON'}`);
+        console.log(`[Room] 📹 Camera toggle: role=${ROOM_DATA.userRole}, hidden=${result.isCameraHidden}, trackEnabled=${result.isCameraTrackEnabled}`);
     };
 
     window.switchCamera = async function() {
@@ -415,6 +499,12 @@
     window.endCall = function() {
         console.log('[Room] 📞 Ending call...');
         
+        // Cleanup stats interval
+        if (statsInterval) {
+            clearInterval(statsInterval);
+            statsInterval = null;
+        }
+        
         if (socket) {
             socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
         }
@@ -432,6 +522,34 @@
         }).catch(() => {
             showToast('Gagal menyalin', 'error');
         });
+    };
+
+    // Hide/Show PIP (Desktop Only)
+    window.toggleHidePip = function() {
+        isPipHidden = !isPipHidden;
+        
+        if (isPipHidden) {
+            elements.localVideoWrapper.classList.add('hidden-pip');
+            elements.hidePipBtn.classList.add('active');
+        } else {
+            elements.localVideoWrapper.classList.remove('hidden-pip');
+            elements.hidePipBtn.classList.remove('active');
+        }
+        
+        console.log(`[Room] 👁️ PIP: ${isPipHidden ? 'HIDDEN' : 'VISIBLE'}`);
+    };
+
+    // Toggle Stats Panel (Admin)
+    window.toggleStatsPanel = function() {
+        if (!elements.statsPanel) return;
+        
+        if (elements.statsPanel.classList.contains('visible')) {
+            elements.statsPanel.classList.remove('visible');
+            if (elements.statsBtn) elements.statsBtn.classList.remove('active');
+        } else {
+            elements.statsPanel.classList.add('visible');
+            if (elements.statsBtn) elements.statsBtn.classList.add('active');
+        }
     };
 
     function updateFullscreenButton() {
@@ -552,6 +670,145 @@
             document.removeEventListener('touchend', handleDragEnd);
             document.removeEventListener('mouseup', handleDragEnd);
         }
+    }
+
+    // ==========================================================================
+    // STATS COLLECTION (Admin)
+    // ==========================================================================
+
+    function startStatsCollection() {
+        console.log('[Room] 📊 Starting stats collection...');
+        
+        // Collect stats every 2 seconds
+        statsInterval = setInterval(async () => {
+            if (!webrtc || !webrtc.peerConnection) return;
+            
+            try {
+                const stats = await getWebRTCStats();
+                if (stats) {
+                    updateStatsDisplay(stats);
+                    updateMiniStats(stats);
+                    
+                    // Send stats to server
+                    socket.emit('webrtc-stats', {
+                        roomId: ROOM_DATA.roomId,
+                        stats: stats
+                    });
+                }
+            } catch (error) {
+                console.error('[Room] ❌ Stats collection error:', error);
+            }
+        }, 2000);
+    }
+
+    async function getWebRTCStats() {
+        if (!webrtc || !webrtc.peerConnection) return null;
+        
+        const pc = webrtc.peerConnection;
+        const stats = await pc.getStats();
+        
+        let result = {
+            resolution: '-',
+            codec: '-',
+            bitrate: 0,
+            framerate: 0,
+            latency: 0,
+            jitter: 0,
+            packetLoss: 0,
+            bytesSent: 0,
+            bytesReceived: 0
+        };
+        
+        stats.forEach(report => {
+            // Video stats
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                result.framerate = report.framesPerSecond || 0;
+                result.bytesReceived = report.bytesReceived || 0;
+                result.packetsLost = report.packetsLost || 0;
+                result.packetsReceived = report.packetsReceived || 0;
+                result.jitter = (report.jitter || 0) * 1000; // Convert to ms
+                
+                if (result.packetsReceived > 0) {
+                    result.packetLoss = (result.packetsLost / (result.packetsLost + result.packetsReceived)) * 100;
+                }
+            }
+            
+            if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                result.bytesSent = report.bytesSent || 0;
+                result.frameWidth = report.frameWidth;
+                result.frameHeight = report.frameHeight;
+                
+                if (result.frameWidth && result.frameHeight) {
+                    result.resolution = `${result.frameWidth}x${result.frameHeight}`;
+                }
+            }
+            
+            // Codec
+            if (report.type === 'codec' && report.mimeType && report.mimeType.includes('video')) {
+                result.codec = report.mimeType.split('/')[1] || '-';
+            }
+            
+            // Candidate pair (latency/RTT)
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                result.latency = report.currentRoundTripTime ? report.currentRoundTripTime * 1000 : 0;
+            }
+        });
+        
+        return result;
+    }
+
+    function updateStatsDisplay(stats) {
+        if (!elements.statsPanel) return;
+        
+        const setInnerText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = value;
+        };
+        
+        setInnerText('statResolution', stats.resolution);
+        setInnerText('statCodec', stats.codec.toUpperCase());
+        setInnerText('statBitrate', formatBitrate(stats.bytesSent));
+        setInnerText('statFramerate', `${Math.round(stats.framerate)} fps`);
+        setInnerText('statLatency', `${Math.round(stats.latency)} ms`);
+        setInnerText('statJitter', `${Math.round(stats.jitter)} ms`);
+        setInnerText('statPacketLoss', `${stats.packetLoss.toFixed(2)}%`);
+        setInnerText('statBytesSent', formatBytes(stats.bytesSent));
+        setInnerText('statBytesReceived', formatBytes(stats.bytesReceived));
+    }
+
+    function updateMiniStats(stats) {
+        if (!elements.miniStats) return;
+        
+        // Show mini stats when connected
+        elements.miniStats.classList.add('visible');
+        
+        const packetLossEl = document.getElementById('miniPacketLoss');
+        const latencyEl = document.getElementById('miniLatency');
+        
+        if (packetLossEl) {
+            packetLossEl.innerText = `📉 ${stats.packetLoss.toFixed(1)}%`;
+            packetLossEl.className = stats.packetLoss > 5 ? 'bad' : stats.packetLoss > 2 ? 'warning' : 'good';
+        }
+        
+        if (latencyEl) {
+            latencyEl.innerText = `⏱️ ${Math.round(stats.latency)}ms`;
+            latencyEl.className = stats.latency > 200 ? 'bad' : stats.latency > 100 ? 'warning' : 'good';
+        }
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+        if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(2)} MB`;
+        return `${(bytes / 1073741824).toFixed(2)} GB`;
+    }
+
+    function formatBitrate(bytes) {
+        // Approximate bitrate from bytes (rough estimate)
+        const bitsPerSecond = (bytes * 8) / 2; // Divided by interval (2s)
+        if (bitsPerSecond < 1000) return `${bitsPerSecond} bps`;
+        if (bitsPerSecond < 1000000) return `${(bitsPerSecond / 1000).toFixed(1)} Kbps`;
+        return `${(bitsPerSecond / 1000000).toFixed(2)} Mbps`;
     }
 
     // ==========================================================================

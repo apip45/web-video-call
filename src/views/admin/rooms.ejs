@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0a0a0a">
+    <title><%= title %> - Video Call</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+            <div class="sidebar-header">
+                <div class="logo-small">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                </div>
+                <span>Admin Panel</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="/admin" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    Dashboard
+                </a>
+                <a href="/admin/users" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                    </svg>
+                    Kelola User
+                </a>
+                <a href="/admin/rooms" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                    Kelola Room
+                </a>
+                <a href="/admin/stats" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    Statistik
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="/" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        <polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                    Kembali
+                </a>
+                <button class="theme-toggle nav-item" onclick="toggleTheme()">
+                    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                    </svg>
+                    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    Theme
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <header class="admin-header">
+                <h1>Kelola Room</h1>
+                <div class="header-actions">
+                    <form action="/admin/rooms/cleanup" method="POST" style="display:inline" onsubmit="return confirm('Hapus semua room tidak aktif?')">
+                        <button type="submit" class="btn btn-secondary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Bersihkan Room Tidak Aktif
+                        </button>
+                    </form>
+                </div>
+            </header>
+
+            <% if (success) { %>
+                <div class="alert alert-success"><%= success %></div>
+            <% } %>
+            <% if (error) { %>
+                <div class="alert alert-error"><%= error %></div>
+            <% } %>
+
+            <!-- Filter -->
+            <div class="card">
+                <div class="card-body">
+                    <form class="filter-form" method="GET" action="/admin/rooms">
+                        <div class="form-group">
+                            <input type="text" name="search" class="form-control" placeholder="Cari Room ID..." value="<%= search || '' %>">
+                        </div>
+                        <div class="form-group">
+                            <select name="status" class="form-control">
+                                <option value="">Semua Status</option>
+                                <option value="active" <%= status === 'active' ? 'selected' : '' %>>Aktif</option>
+                                <option value="inactive" <%= status === 'inactive' ? 'selected' : '' %>>Tidak Aktif</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-secondary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                            </svg>
+                            Cari
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Rooms Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Daftar Room (<%= pagination.total %>)</h3>
+                </div>
+                <div class="card-body">
+                    <% if (rooms.length > 0) { %>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Room ID</th>
+                                        <th>Peserta</th>
+                                        <th>Status</th>
+                                        <th>Exam Mode</th>
+                                        <th>Dibuat</th>
+                                        <th>Aktivitas Terakhir</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% rooms.forEach(room => { %>
+                                        <tr>
+                                            <td>
+                                                <a href="/room/<%= room.roomId %>" class="room-link" target="_blank">
+                                                    <code><%= room.roomId %></code>
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                                        <polyline points="15 3 21 3 21 9"/>
+                                                        <line x1="10" y1="14" x2="21" y2="3"/>
+                                                    </svg>
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <div class="participants-info">
+                                                    <span class="badge <%= room.participants.length === 2 ? 'badge-warning' : 'badge-muted' %>">
+                                                        <%= room.participants.length %>/2
+                                                    </span>
+                                                    <% if (room.participants.length > 0) { %>
+                                                        <div class="participant-list">
+                                                            <% room.participants.forEach(p => { %>
+                                                                <span class="participant-name" title="<%= p.username %>">
+                                                                    <%= p.username %>
+                                                                    <% if (p.role === 'admin') { %>
+                                                                        <small>(Admin)</small>
+                                                                    <% } %>
+                                                                </span>
+                                                            <% }); %>
+                                                        </div>
+                                                    <% } %>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge <%= room.isActive ? 'badge-success' : 'badge-muted' %>">
+                                                    <%= room.isActive ? 'Aktif' : 'Tidak Aktif' %>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge <%= room.isExamMode ? 'badge-warning' : 'badge-muted' %>">
+                                                    <%= room.isExamMode ? 'Ya' : 'Tidak' %>
+                                                </span>
+                                            </td>
+                                            <td><%= new Date(room.createdAt).toLocaleString('id-ID') %></td>
+                                            <td>
+                                                <% if (room.lastActivity) { %>
+                                                    <%= new Date(room.lastActivity).toLocaleString('id-ID') %>
+                                                <% } else { %>
+                                                    -
+                                                <% } %>
+                                            </td>
+                                            <td>
+                                                <div class="action-buttons">
+                                                    <a href="/room/<%= room.roomId %>" class="btn btn-ghost btn-sm" target="_blank" title="Join Room">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                                                            <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                                                        </svg>
+                                                    </a>
+                                                    <form action="/admin/rooms/<%= room.roomId %>/delete" method="POST" style="display:inline" onsubmit="return confirm('Hapus room ini?')">
+                                                        <button type="submit" class="btn btn-ghost btn-sm btn-danger" title="Hapus">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                <polyline points="3 6 5 6 21 6"/>
+                                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <% }); %>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <% if (pagination.pages > 1) { %>
+                            <div class="pagination">
+                                <% if (pagination.page > 1) { %>
+                                    <a href="?page=<%= pagination.page - 1 %>&search=<%= search || '' %>&status=<%= status || '' %>" class="btn btn-ghost btn-sm">&laquo; Prev</a>
+                                <% } %>
+                                
+                                <% for (let i = 1; i <= pagination.pages; i++) { %>
+                                    <a href="?page=<%= i %>&search=<%= search || '' %>&status=<%= status || '' %>" class="btn btn-ghost btn-sm <%= i === pagination.page ? 'active' : '' %>"><%= i %></a>
+                                <% } %>
+                                
+                                <% if (pagination.page < pagination.pages) { %>
+                                    <a href="?page=<%= pagination.page + 1 %>&search=<%= search || '' %>&status=<%= status || '' %>" class="btn btn-ghost btn-sm">Next &raquo;</a>
+                                <% } %>
+                            </div>
+                        <% } %>
+                    <% } else { %>
+                        <p class="empty-text">Tidak ada room ditemukan</p>
+                    <% } %>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+</body>
+</html>

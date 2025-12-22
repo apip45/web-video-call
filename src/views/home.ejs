@@ -27,6 +27,17 @@
                         <span class="badge badge-admin">Admin</span>
                     <% } %>
                 </div>
+                <% if (user.role === 'admin') { %>
+                    <a href="/admin" class="btn btn-ghost btn-sm" title="Admin Panel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"/>
+                            <rect x="14" y="3" width="7" height="7"/>
+                            <rect x="14" y="14" width="7" height="7"/>
+                            <rect x="3" y="14" width="7" height="7"/>
+                        </svg>
+                        <span>Admin</span>
+                    </a>
+                <% } %>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
                     <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="5"/>

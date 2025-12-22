@@ -77,6 +77,60 @@
                 </span>
             </div>
         </div>
+
+        <!-- Stats Panel (Admin Only) -->
+        <% if (isAdmin) { %>
+        <div class="stats-panel" id="statsPanel">
+            <div class="stats-panel-header">
+                <span>WebRTC Stats</span>
+                <button class="btn-close" onclick="toggleStatsPanel()">&times;</button>
+            </div>
+            <div class="stats-panel-body">
+                <div class="stats-row">
+                    <span>Resolution:</span>
+                    <span id="statResolution">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Codec:</span>
+                    <span id="statCodec">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Bitrate:</span>
+                    <span id="statBitrate">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Framerate:</span>
+                    <span id="statFramerate">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Latency:</span>
+                    <span id="statLatency">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Jitter:</span>
+                    <span id="statJitter">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Packet Loss:</span>
+                    <span id="statPacketLoss">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Upload:</span>
+                    <span id="statBytesSent">-</span>
+                </div>
+                <div class="stats-row">
+                    <span>Download:</span>
+                    <span id="statBytesReceived">-</span>
+                </div>
+            </div>
+        </div>
+        <% } %>
+
+        <!-- Mini Stats (All Users) -->
+        <div class="mini-stats" id="miniStats">
+            <span id="miniPacketLoss">-</span>
+            <span id="miniLatency">-</span>
+        </div>
     </div>
 
     <!-- Controls Bar -->
@@ -128,6 +182,19 @@
                     <path d="M17 8l-2 2m0-2l2 2"/>
                 </svg>
             </button>
+
+            <!-- Hide PIP (Desktop Only) -->
+            <button class="control-btn desktop-only" id="hidePipBtn" onclick="toggleHidePip()" title="Hide/Show Preview">
+                <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+            </button>
             
             <!-- End Call -->
             <button class="control-btn control-btn-danger" id="endCallBtn" onclick="endCall()" title="End Call">
@@ -139,6 +206,17 @@
         </div>
         
         <div class="controls-right">
+            <% if (isAdmin) { %>
+            <!-- Toggle Stats Panel (Admin) -->
+            <button class="control-btn" id="statsBtn" onclick="toggleStatsPanel()" title="WebRTC Stats">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"/>
+                    <line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+            </button>
+            <% } %>
+
             <!-- Audio Output (Mobile) -->
             <button class="control-btn mobile-only" id="audioOutputBtn" onclick="toggleAudioOutput()" title="Switch Speaker">
                 <svg class="icon-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -187,6 +265,8 @@
             roomId: '<%= room.roomId %>',
             userId: '<%= userId %>',
             username: '<%= username %>',
+            userRole: '<%= userRole || "user" %>',
+            isAdmin: <%= isAdmin ? 'true' : 'false' %>,
             iceServers: <%- iceServers %>
         };
     </script>

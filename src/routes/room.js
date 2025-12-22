@@ -119,7 +119,9 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
             room: room,
             iceServers: JSON.stringify(iceServers),
             userId: req.session.userId,
-            username: req.session.displayName || req.session.username
+            username: req.session.displayName || req.session.username,
+            userRole: req.session.role,
+            isAdmin: req.session.role === 'admin'
         });
     } catch (error) {
         console.error(`[Room] ❌ Error entering room: ${error.message}`);

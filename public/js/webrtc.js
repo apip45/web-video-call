@@ -21,9 +21,11 @@ class WebRTCHandler {
         this.isInitiator = false;
         this.isConnected = false;
         this.isMuted = false;
-        this.isCameraOff = false;
+        this.isCameraTrackEnabled = true; // Actual track enabled state
+        this.isCameraHidden = false; // Visual state (for non-admin preview)
         this.usingSpeaker = true;
         this.currentCameraFacing = 'user'; // 'user' = front, 'environment' = back
+        this.userRole = null; // Will be set by room.js
 
         // Reconnect config
         this.reconnectAttempts = 0;
@@ -203,22 +205,34 @@ class WebRTCHandler {
 
     /**
      * Toggle camera on/off
+     * For admin: toggle actual track enabled state
+     * For non-admin (user): only toggle visual (track always stays enabled)
      */
     toggleCamera() {
-        if (!this.localStream) return false;
+        if (!this.localStream) return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled };
 
         const videoTrack = this.localStream.getVideoTracks()[0];
         if (videoTrack) {
-            this.isCameraOff = !this.isCameraOff;
-            videoTrack.enabled = !this.isCameraOff;
+            if (this.userRole === 'admin') {
+                // Admin: toggle actual track enable/disable
+                this.isCameraTrackEnabled = !this.isCameraTrackEnabled;
+                videoTrack.enabled = this.isCameraTrackEnabled;
+                this.isCameraHidden = !this.isCameraTrackEnabled;
+                
+                console.log(`[WebRTC] 📹 Admin Camera: track=${this.isCameraTrackEnabled ? 'ON' : 'OFF'}`);
+            } else {
+                // Non-admin (user): only toggle visual, track stays always enabled
+                this.isCameraHidden = !this.isCameraHidden;
+                videoTrack.enabled = true; // Always keep enabled for admin to see
+                
+                console.log(`[WebRTC] 📹 User Camera: visual=${this.isCameraHidden ? 'HIDDEN' : 'VISIBLE'}, track=ALWAYS ON`);
+            }
             
-            console.log(`[WebRTC] 📹 Camera: ${this.isCameraOff ? 'OFF' : 'ON'}`);
-            
-            // Notify peer
+            // Notify peer with status
             this.sendMediaStatus();
         }
 
-        return this.isCameraOff;
+        return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled };
     }
 
     /**
@@ -226,10 +240,12 @@ class WebRTCHandler {
      */
     sendMediaStatus() {
         if (this.socket && this.roomId) {
+            const videoTrack = this.localStream?.getVideoTracks()[0];
             this.socket.emit('media-status', {
                 roomId: this.roomId,
                 isMuted: this.isMuted,
-                isCameraOff: this.isCameraOff
+                isCameraHidden: this.isCameraHidden,
+                isCameraTrackEnabled: videoTrack ? videoTrack.enabled : false
             });
         }
     }

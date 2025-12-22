@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0a0a0a">
+    <title><%= title %> - Video Call</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+            <div class="sidebar-header">
+                <div class="logo-small">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                </div>
+                <span>Admin Panel</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="/admin" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    Dashboard
+                </a>
+                <a href="/admin/users" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                    </svg>
+                    Kelola User
+                </a>
+                <a href="/admin/rooms" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                    Kelola Room
+                </a>
+                <a href="/admin/stats" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    Statistik
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="/" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        <polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                    Kembali
+                </a>
+                <button class="theme-toggle nav-item" onclick="toggleTheme()">
+                    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                    </svg>
+                    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    Theme
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <header class="admin-header">
+                <h1>Statistik</h1>
+                <div class="header-actions">
+                    <select id="periodSelect" class="form-control" onchange="changePeriod(this.value)">
+                        <option value="today" <%= period === 'today' ? 'selected' : '' %>>Hari Ini</option>
+                        <option value="week" <%= period === 'week' ? 'selected' : '' %>>7 Hari Terakhir</option>
+                        <option value="month" <%= period === 'month' ? 'selected' : '' %>>30 Hari Terakhir</option>
+                    </select>
+                </div>
+            </header>
+
+            <!-- Summary Cards -->
+            <div class="stats-grid stats-grid-5">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-calls">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07"/>
+                            <path d="M5 3h4l2 4-3 2a16 16 0 0 0 7 7l2-3 4 2v4"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Total Call</p>
+                        <p class="stat-value"><%= stats.summary.totalCalls || 0 %></p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-duration">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Total Durasi</p>
+                        <p class="stat-value">
+                            <% 
+                                const totalMinutes = Math.floor((stats.summary.totalDuration || 0) / 60);
+                                const hours = Math.floor(totalMinutes / 60);
+                                const minutes = totalMinutes % 60;
+                            %>
+                            <%= hours > 0 ? hours + 'j ' : '' %><%= minutes %>m
+                        </p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-upload">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="19" x2="12" y2="5"/>
+                            <polyline points="5 12 12 5 19 12"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Upload</p>
+                        <p class="stat-value">
+                            <% const uploadMB = (stats.summary.totalBytesSent || 0) / 1048576; %>
+                            <%= uploadMB > 1024 ? (uploadMB / 1024).toFixed(2) + ' GB' : uploadMB.toFixed(2) + ' MB' %>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-download">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <polyline points="19 12 12 19 5 12"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Download</p>
+                        <p class="stat-value">
+                            <% const downloadMB = (stats.summary.totalBytesReceived || 0) / 1048576; %>
+                            <%= downloadMB > 1024 ? (downloadMB / 1024).toFixed(2) + ' GB' : downloadMB.toFixed(2) + ' MB' %>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-bandwidth">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Total Bandwidth</p>
+                        <p class="stat-value">
+                            <% const totalMB = ((stats.summary.totalBytesSent || 0) + (stats.summary.totalBytesReceived || 0)) / 1048576; %>
+                            <%= totalMB > 1024 ? (totalMB / 1024).toFixed(2) + ' GB' : totalMB.toFixed(2) + ' MB' %>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quality Metrics -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Kualitas Jaringan (Rata-rata)</h3>
+                </div>
+                <div class="card-body">
+                    <div class="quality-grid">
+                        <div class="quality-item">
+                            <div class="quality-value <%= (stats.summary.avgPacketLoss || 0) > 5 ? 'quality-bad' : (stats.summary.avgPacketLoss || 0) > 2 ? 'quality-warning' : 'quality-good' %>">
+                                <%= (stats.summary.avgPacketLoss || 0).toFixed(2) %>%
+                            </div>
+                            <p class="quality-label">Packet Loss</p>
+                            <p class="quality-desc">< 2% = Baik</p>
+                        </div>
+                        <div class="quality-item">
+                            <div class="quality-value <%= (stats.summary.avgLatency || 0) > 200 ? 'quality-bad' : (stats.summary.avgLatency || 0) > 100 ? 'quality-warning' : 'quality-good' %>">
+                                <%= Math.round(stats.summary.avgLatency || 0) %>ms
+                            </div>
+                            <p class="quality-label">Latency</p>
+                            <p class="quality-desc">< 100ms = Baik</p>
+                        </div>
+                        <div class="quality-item">
+                            <div class="quality-value <%= (stats.summary.avgJitter || 0) > 30 ? 'quality-bad' : (stats.summary.avgJitter || 0) > 15 ? 'quality-warning' : 'quality-good' %>">
+                                <%= Math.round(stats.summary.avgJitter || 0) %>ms
+                            </div>
+                            <p class="quality-label">Jitter</p>
+                            <p class="quality-desc">< 15ms = Baik</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="dashboard-grid">
+                <!-- Daily Calls Chart -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Calls per Hari</h3>
+                    </div>
+                    <div class="card-body">
+                        <% if (stats.daily && stats.daily.length > 0) { %>
+                            <div class="bar-chart bar-chart-large">
+                                <% 
+                                    const maxCalls = Math.max(...stats.daily.map(d => d.calls || 0), 1);
+                                %>
+                                <% stats.daily.forEach(day => { %>
+                                    <div class="bar-container">
+                                        <div class="bar" style="height: <%= Math.max(10, ((day.calls || 0) / maxCalls) * 150) %>px;">
+                                            <span class="bar-value"><%= day.calls || 0 %></span>
+                                        </div>
+                                        <span class="bar-label"><%= day._id.split('-').slice(1).join('/') %></span>
+                                    </div>
+                                <% }); %>
+                            </div>
+                        <% } else { %>
+                            <p class="empty-text">Tidak ada data</p>
+                        <% } %>
+                    </div>
+                </div>
+
+                <!-- Daily Bandwidth Chart -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Bandwidth per Hari (MB)</h3>
+                    </div>
+                    <div class="card-body">
+                        <% if (stats.daily && stats.daily.length > 0) { %>
+                            <div class="bar-chart bar-chart-large">
+                                <% 
+                                    const maxBandwidth = Math.max(...stats.daily.map(d => ((d.bytesSent || 0) + (d.bytesReceived || 0)) / 1048576), 1);
+                                %>
+                                <% stats.daily.forEach(day => { 
+                                    const bandwidth = ((day.bytesSent || 0) + (day.bytesReceived || 0)) / 1048576;
+                                %>
+                                    <div class="bar-container">
+                                        <div class="bar bar-secondary" style="height: <%= Math.max(10, (bandwidth / maxBandwidth) * 150) %>px;">
+                                            <span class="bar-value"><%= bandwidth.toFixed(1) %></span>
+                                        </div>
+                                        <span class="bar-label"><%= day._id.split('-').slice(1).join('/') %></span>
+                                    </div>
+                                <% }); %>
+                            </div>
+                        <% } else { %>
+                            <p class="empty-text">Tidak ada data</p>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Calls -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Call Terbaru</h3>
+                </div>
+                <div class="card-body">
+                    <% if (stats.recentCalls && stats.recentCalls.length > 0) { %>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Room</th>
+                                        <th>User</th>
+                                        <th>Durasi</th>
+                                        <th>Upload</th>
+                                        <th>Download</th>
+                                        <th>Packet Loss</th>
+                                        <th>Latency</th>
+                                        <th>Waktu</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% stats.recentCalls.forEach(call => { %>
+                                        <tr>
+                                            <td><code><%= call.roomId %></code></td>
+                                            <td>
+                                                <% if (call.user) { %>
+                                                    <%= call.user.username %>
+                                                <% } else { %>
+                                                    -
+                                                <% } %>
+                                            </td>
+                                            <td><%= Math.round((call.callDuration || 0) / 60) %>m</td>
+                                            <td><%= ((call.bytesSent || 0) / 1048576).toFixed(2) %> MB</td>
+                                            <td><%= ((call.bytesReceived || 0) / 1048576).toFixed(2) %> MB</td>
+                                            <td>
+                                                <span class="<%= (call.avgPacketLoss || 0) > 5 ? 'text-danger' : '' %>">
+                                                    <%= (call.avgPacketLoss || 0).toFixed(2) %>%
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="<%= (call.avgLatency || 0) > 200 ? 'text-danger' : '' %>">
+                                                    <%= Math.round(call.avgLatency || 0) %>ms
+                                                </span>
+                                            </td>
+                                            <td><%= new Date(call.createdAt).toLocaleString('id-ID') %></td>
+                                        </tr>
+                                    <% }); %>
+                                </tbody>
+                            </table>
+                        </div>
+                    <% } else { %>
+                        <p class="empty-text">Tidak ada data call</p>
+                    <% } %>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script>
+        function changePeriod(period) {
+            window.location.href = '/admin/stats?period=' + period;
+        }
+    </script>
+</body>
+</html>

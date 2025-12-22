@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0a0a0a">
+    <title><%= title %> - Video Call</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+            <div class="sidebar-header">
+                <div class="logo-small">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                </div>
+                <span>Admin Panel</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="/admin" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    Dashboard
+                </a>
+                <a href="/admin/users" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    Kelola User
+                </a>
+                <a href="/admin/rooms" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                    Kelola Room
+                </a>
+                <a href="/admin/stats" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    Statistik
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="/" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        <polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                    Kembali
+                </a>
+                <button class="theme-toggle nav-item" onclick="toggleTheme()">
+                    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                    </svg>
+                    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    Theme
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <header class="admin-header">
+                <h1>Dashboard</h1>
+                <div class="header-actions">
+                    <span class="user-badge">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <%= user.displayName || user.username %>
+                    </span>
+                </div>
+            </header>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-users">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Total User</p>
+                        <p class="stat-value"><%= stats.userCount %></p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-rooms">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                            <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Room Aktif</p>
+                        <p class="stat-value"><%= stats.activeRoomCount %></p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-calls">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07"/>
+                            <path d="M5 3h4l2 4-3 2a16 16 0 0 0 7 7l2-3 4 2v4"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Call Hari Ini</p>
+                        <p class="stat-value"><%= stats.today.totalCalls || 0 %></p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-bandwidth">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <p class="stat-label">Bandwidth Hari Ini</p>
+                        <p class="stat-value" id="todayBandwidth">
+                            <%= ((stats.today.totalBytesSent || 0) + (stats.today.totalBytesReceived || 0)) > 1073741824 
+                                ? (((stats.today.totalBytesSent || 0) + (stats.today.totalBytesReceived || 0)) / 1073741824).toFixed(2) + ' GB'
+                                : (((stats.today.totalBytesSent || 0) + (stats.today.totalBytesReceived || 0)) / 1048576).toFixed(2) + ' MB' %>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Online Users & Recent Rooms -->
+            <div class="dashboard-grid">
+                <!-- Online Users -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>User Online</h3>
+                        <span class="badge badge-success"><%= onlineUsers.length %> online</span>
+                    </div>
+                    <div class="card-body">
+                        <% if (onlineUsers.length > 0) { %>
+                            <ul class="user-list">
+                                <% onlineUsers.forEach(u => { %>
+                                    <li class="user-item">
+                                        <span class="user-avatar">
+                                            <%= (u.displayName || u.username).charAt(0).toUpperCase() %>
+                                        </span>
+                                        <div class="user-info">
+                                            <span class="user-name"><%= u.displayName || u.username %></span>
+                                            <span class="user-role <%= u.role %>"><%= u.role %></span>
+                                        </div>
+                                        <span class="online-dot"></span>
+                                    </li>
+                                <% }); %>
+                            </ul>
+                        <% } else { %>
+                            <p class="empty-text">Tidak ada user online</p>
+                        <% } %>
+                    </div>
+                </div>
+
+                <!-- Recent Rooms -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Room Terbaru</h3>
+                        <a href="/admin/rooms" class="btn btn-ghost btn-sm">Lihat Semua</a>
+                    </div>
+                    <div class="card-body">
+                        <% if (recentRooms.length > 0) { %>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Room ID</th>
+                                        <th>Peserta</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% recentRooms.slice(0, 5).forEach(room => { %>
+                                        <tr>
+                                            <td>
+                                                <a href="/room/<%= room.roomId %>"><%= room.roomId %></a>
+                                            </td>
+                                            <td><%= room.participants.length %>/2</td>
+                                            <td>
+                                                <span class="badge <%= room.isActive ? 'badge-success' : 'badge-muted' %>">
+                                                    <%= room.isActive ? 'Aktif' : 'Tidak Aktif' %>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <% }); %>
+                                </tbody>
+                            </table>
+                        <% } else { %>
+                            <p class="empty-text">Belum ada room</p>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weekly Chart Placeholder -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Statistik Mingguan</h3>
+                </div>
+                <div class="card-body">
+                    <div class="weekly-stats">
+                        <% if (stats.weekly && stats.weekly.length > 0) { %>
+                            <div class="bar-chart">
+                                <% stats.weekly.forEach(day => { %>
+                                    <div class="bar-container">
+                                        <div class="bar" style="height: <%= Math.max(10, (day.calls || 0) * 20) %>px;">
+                                            <span class="bar-value"><%= day.calls || 0 %></span>
+                                        </div>
+                                        <span class="bar-label"><%= day._id.split('-')[2] %></span>
+                                    </div>
+                                <% }); %>
+                            </div>
+                            <p class="chart-label">Jumlah Call per Hari (7 hari terakhir)</p>
+                        <% } else { %>
+                            <p class="empty-text">Belum ada data statistik</p>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script>
+        // Auto refresh stats every 30 seconds
+        setInterval(async () => {
+            try {
+                const response = await fetch('/admin/api/stats/realtime');
+                const data = await response.json();
+                if (data.success) {
+                    // Update display if needed
+                    console.log('[Admin] Stats updated:', data.data);
+                }
+            } catch (error) {
+                console.error('[Admin] Failed to fetch stats:', error);
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

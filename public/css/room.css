@@ -225,6 +225,30 @@
     height: 0.75rem;
 }
 
+/* Camera off visual overlay (exam mode) */
+.local-video-wrapper.camera-off-visual::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+    z-index: 5;
+}
+
+.local-video-wrapper.camera-off-visual::before {
+    content: '📹';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+    z-index: 6;
+    opacity: 0.5;
+    filter: grayscale(1);
+}
+
 /* Responsive PIP size */
 @media (max-width: 480px) {
     .local-video-wrapper {
@@ -535,4 +559,174 @@
     .local-video-wrapper {
         bottom: calc(100px + env(safe-area-inset-bottom));
     }
+}
+
+/* =============================================================================
+   DESKTOP ONLY / MOBILE ONLY
+   ============================================================================= */
+.desktop-only {
+    display: none;
+}
+
+@media (min-width: 769px) {
+    .desktop-only {
+        display: flex;
+    }
+    
+    .mobile-only {
+        display: none !important;
+    }
+}
+
+/* =============================================================================
+   HIDE PIP MODE
+   ============================================================================= */
+.local-video-wrapper.hidden-pip {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* =============================================================================
+   STATS PANEL (Admin Only)
+   ============================================================================= */
+.stats-panel {
+    position: absolute;
+    top: 70px;
+    right: var(--spacing-md);
+    width: 260px;
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 15;
+    display: none;
+}
+
+.stats-panel.visible {
+    display: block;
+}
+
+.stats-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: 600;
+    color: white;
+    font-size: 0.875rem;
+}
+
+.stats-panel-header .btn-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.stats-panel-header .btn-close:hover {
+    color: white;
+}
+
+.stats-panel-body {
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-xs) 0;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.stats-row span:first-child {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.stats-row span:last-child {
+    font-family: monospace;
+    color: var(--color-primary);
+}
+
+/* =============================================================================
+   MINI STATS (All Users)
+   ============================================================================= */
+.mini-stats {
+    position: absolute;
+    top: 70px;
+    left: var(--spacing-md);
+    display: flex;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: var(--radius-md);
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.8);
+    z-index: 15;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.mini-stats.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.mini-stats span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mini-stats .good {
+    color: var(--color-success);
+}
+
+.mini-stats .warning {
+    color: var(--color-warning, #f59e0b);
+}
+
+.mini-stats .bad {
+    color: var(--color-error);
+}
+
+/* =============================================================================
+   EXAM MODE INDICATOR
+   ============================================================================= */
+.exam-mode-indicator {
+    position: absolute;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--spacing-xs) var(--spacing-md);
+    background: rgba(239, 68, 68, 0.9);
+    border-radius: var(--radius-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+    z-index: 15;
+    display: none;
+}
+
+.exam-mode-indicator.visible {
+    display: block;
+}
+
+/* Active button state for exam mode */
+.control-btn.active {
+    background: var(--color-primary);
+    color: white;
+}
+
+.control-btn.active:hover {
+    background: var(--color-primary-dark, #059669);
 }

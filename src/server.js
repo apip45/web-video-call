@@ -21,6 +21,7 @@ const connectDB = require('./config/database');
 // Import routes
 const authRoutes = require('./routes/auth');
 const roomRoutes = require('./routes/room');
+const adminRoutes = require('./routes/admin');
 
 // Import middleware
 const { attachUserToLocals } = require('./middleware/auth');
@@ -102,6 +103,9 @@ app.use('/', authRoutes);
 
 // Room routes
 app.use('/', roomRoutes);
+
+// Admin routes
+app.use('/', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -3,11 +3,19 @@
  * SOCKET HANDLER
  * =============================================================================
  * WebRTC signaling dengan Socket.IO
- * Handles: join room, offer, answer, ICE candidates, media status
+ * Handles: join room, offer, answer, ICE candidates, media status, exam mode, stats
  */
 
 const Room = require('../models/Room');
 const User = require('../models/User');
+const Stats = require('../models/Stats');
+
+// Store for room cleanup timers
+const roomCleanupTimers = new Map();
+const ROOM_CLEANUP_DELAY = 10000; // 10 seconds
+
+// Store for active call stats
+const activeCallStats = new Map();
 
 /**
  * Setup Socket.IO handlers
@@ -20,7 +28,8 @@ const setupSocketHandlers = (io) => {
         if (session && session.userId) {
             socket.userId = session.userId;
             socket.username = session.displayName || session.username;
-            console.log(`[Socket] 🔌 Connection authorized: ${socket.username}`);
+            socket.userRole = session.role;
+            console.log(`[Socket] 🔌 Connection authorized: ${socket.username} (${socket.userRole})`);
             next();
         } else {
             console.log('[Socket] ⚠️ Unauthorized socket connection attempt');
@@ -29,7 +38,7 @@ const setupSocketHandlers = (io) => {
     });
 
     io.on('connection', (socket) => {
-        console.log(`[Socket] ✅ Connected: ${socket.username} (${socket.id})`);
+        console.log(`[Socket] ✅ Connected: ${socket.username} (${socket.id}) - Role: ${socket.userRole}`);
 
         // =========================================================================
         // JOIN ROOM
@@ -38,6 +47,13 @@ const setupSocketHandlers = (io) => {
             try {
                 const { roomId } = data;
                 console.log(`[Socket] 🚪 ${socket.username} joining room: ${roomId}`);
+
+                // Cancel any pending cleanup for this room
+                if (roomCleanupTimers.has(roomId)) {
+                    clearTimeout(roomCleanupTimers.get(roomId));
+                    roomCleanupTimers.delete(roomId);
+                    console.log(`[Socket] ⏱️ Cancelled cleanup timer for room: ${roomId}`);
+                }
 
                 // Cari atau buat room
                 let room = await Room.findOne({ roomId: roomId, isActive: true });
@@ -53,6 +69,19 @@ const setupSocketHandlers = (io) => {
                     p => p.user && p.user.toString() === socket.userId.toString()
                 );
 
+                // NEW: Check if non-admin is trying to join when another non-admin is already in room
+                // Room can only have: 1 admin + 1 user, or multiple admins
+                if (socket.userRole !== 'admin' && !existingParticipant) {
+                    const existingNonAdmin = room.participants.find(p => p.role !== 'admin');
+                    if (existingNonAdmin) {
+                        console.log(`[Socket] ⚠️ Room ${roomId} already has a non-admin user, rejecting: ${socket.username}`);
+                        socket.emit('room-full-for-user', { 
+                            message: 'Akses ditolak: Sudah ada User lain di dalam room ini. Room ini hanya bisa dimasuki oleh 1 Admin dan 1 User, atau beberapa Admin.' 
+                        });
+                        return;
+                    }
+                }
+
                 // Cek kapasitas room
                 if (room.isFull() && !existingParticipant) {
                     console.log(`[Socket] ⚠️ Room full: ${roomId}`);
@@ -60,23 +89,40 @@ const setupSocketHandlers = (io) => {
                     return;
                 }
 
-                // Tambah/update participant
+                // Tambah/update participant with role
                 if (existingParticipant) {
                     existingParticipant.socketId = socket.id;
                     existingParticipant.joinedAt = new Date();
+                    existingParticipant.role = socket.userRole;
                 } else {
                     room.participants.push({
                         user: socket.userId,
                         socketId: socket.id,
-                        joinedAt: new Date()
+                        role: socket.userRole,
+                        joinedAt: new Date(),
+                        isCameraHidden: false // For visual state (non-admin)
                     });
                 }
 
+                room.lastActivity = new Date();
                 await room.save();
 
                 // Join socket room
                 socket.join(roomId);
                 socket.roomId = roomId;
+
+                // Initialize call stats tracking
+                if (!activeCallStats.has(roomId)) {
+                    activeCallStats.set(roomId, {
+                        startTime: new Date(),
+                        participants: new Map()
+                    });
+                }
+                activeCallStats.get(roomId).participants.set(socket.id, {
+                    bytesSent: 0,
+                    bytesReceived: 0,
+                    userId: socket.userId
+                });
 
                 // Get other participant
                 const otherParticipant = room.getOtherParticipant(socket.id);
@@ -88,7 +134,9 @@ const setupSocketHandlers = (io) => {
                 socket.emit('room-joined', {
                     roomId: roomId,
                     participantCount: room.participants.length,
-                    isInitiator: !otherParticipant // First user is initiator
+                    isInitiator: !otherParticipant,
+                    userRole: socket.userRole,
+                    isAdmin: socket.userRole === 'admin'
                 });
 
                 // Notify other participant
@@ -97,6 +145,7 @@ const setupSocketHandlers = (io) => {
                     io.to(otherParticipant.socketId).emit('user-joined', {
                         socketId: socket.id,
                         username: socket.username,
+                        userRole: socket.userRole,
                         participantCount: room.participants.length
                     });
                 }
@@ -119,7 +168,8 @@ const setupSocketHandlers = (io) => {
                 io.to(targetSocketId).emit('offer', {
                     offer: offer,
                     senderSocketId: socket.id,
-                    senderUsername: socket.username
+                    senderUsername: socket.username,
+                    senderRole: socket.userRole
                 });
             } catch (error) {
                 console.error(`[Socket] ❌ Offer error: ${error.message}`);
@@ -168,8 +218,8 @@ const setupSocketHandlers = (io) => {
         // =========================================================================
         socket.on('media-status', async (data) => {
             try {
-                const { roomId, isMuted, isCameraOff } = data;
-                console.log(`[Socket] 🎤 Media status from ${socket.username}: muted=${isMuted}, cameraOff=${isCameraOff}`);
+                const { roomId, isMuted, isCameraHidden, isCameraTrackEnabled } = data;
+                console.log(`[Socket] 🎤 Media status from ${socket.username} (${socket.userRole}): muted=${isMuted}, cameraHidden=${isCameraHidden}, trackEnabled=${isCameraTrackEnabled}`);
 
                 // Update di database
                 const room = await Room.findOne({ roomId: roomId });
@@ -177,20 +227,62 @@ const setupSocketHandlers = (io) => {
                     const participant = room.participants.find(p => p.socketId === socket.id);
                     if (participant) {
                         participant.isMuted = isMuted;
-                        participant.isCameraOff = isCameraOff;
+                        participant.isCameraHidden = isCameraHidden;
+                        participant.isCameraTrackEnabled = isCameraTrackEnabled;
                         await room.save();
+                    }
+
+                    // Broadcast ke room (except sender)
+                    // For non-admin (user): track always enabled, so receiver always sees video
+                    // isCameraHidden is just visual state for non-admin's own view
+                    socket.to(roomId).emit('media-status', {
+                        socketId: socket.id,
+                        username: socket.username,
+                        userRole: socket.userRole,
+                        isMuted: isMuted,
+                        // For admin viewing non-admin: show visual status but track is always on
+                        // For anyone viewing admin: show actual track state
+                        isCameraHidden: isCameraHidden,
+                        isCameraTrackEnabled: isCameraTrackEnabled
+                    });
+                }
+            } catch (error) {
+                console.error(`[Socket] ❌ Media status error: ${error.message}`);
+            }
+        });
+
+        // =========================================================================
+        // WEBRTC STATS UPDATE
+        // =========================================================================
+        socket.on('webrtc-stats', async (data) => {
+            try {
+                const { roomId, stats } = data;
+                
+                // Update active call stats
+                if (activeCallStats.has(roomId)) {
+                    const roomStats = activeCallStats.get(roomId);
+                    const participantStats = roomStats.participants.get(socket.id);
+                    if (participantStats && stats) {
+                        participantStats.bytesSent = stats.bytesSent || 0;
+                        participantStats.bytesReceived = stats.bytesReceived || 0;
+                        participantStats.lastStats = stats;
                     }
                 }
 
-                // Broadcast ke room (except sender)
-                socket.to(roomId).emit('media-status', {
-                    socketId: socket.id,
-                    username: socket.username,
-                    isMuted: isMuted,
-                    isCameraOff: isCameraOff
-                });
+                // Broadcast stats to admin in room
+                const room = await Room.findOne({ roomId: roomId });
+                if (room) {
+                    const adminParticipant = room.participants.find(p => p.role === 'admin');
+                    if (adminParticipant && adminParticipant.socketId !== socket.id) {
+                        io.to(adminParticipant.socketId).emit('peer-stats', {
+                            socketId: socket.id,
+                            username: socket.username,
+                            stats: stats
+                        });
+                    }
+                }
             } catch (error) {
-                console.error(`[Socket] ❌ Media status error: ${error.message}`);
+                console.error(`[Socket] ❌ WebRTC stats error: ${error.message}`);
             }
         });
 
@@ -236,6 +328,9 @@ const setupSocketHandlers = (io) => {
             await handleLeaveRoom(socket, io, socket.roomId);
         });
     });
+
+    // Start periodic cleanup of old inactive rooms
+    startPeriodicCleanup();
 };
 
 /**
@@ -251,7 +346,11 @@ async function handleLeaveRoom(socket, io, roomId) {
         if (room) {
             // Remove participant
             const removed = room.removeParticipant(socket.id);
+            room.lastActivity = new Date();
             await room.save();
+
+            // Save call stats
+            await saveCallStats(roomId, socket);
 
             // Notify remaining participants
             socket.to(roomId).emit('user-left', {
@@ -262,11 +361,9 @@ async function handleLeaveRoom(socket, io, roomId) {
 
             console.log(`[Socket] 👥 Room ${roomId} participants: ${room.participants.length}/2`);
 
-            // Hapus room jika kosong
+            // Schedule room cleanup if empty
             if (room.participants.length === 0) {
-                room.isActive = false;
-                await room.save();
-                console.log(`[Socket] 🗑️ Room ${roomId} marked inactive (empty)`);
+                scheduleRoomCleanup(roomId);
             }
         }
 
@@ -274,6 +371,97 @@ async function handleLeaveRoom(socket, io, roomId) {
     } catch (error) {
         console.error(`[Socket] ❌ Leave room error: ${error.message}`);
     }
+}
+
+/**
+ * Schedule room cleanup after delay
+ */
+function scheduleRoomCleanup(roomId) {
+    console.log(`[Socket] ⏱️ Scheduling cleanup for room ${roomId} in ${ROOM_CLEANUP_DELAY/1000}s`);
+    
+    const timer = setTimeout(async () => {
+        try {
+            const room = await Room.findOne({ roomId: roomId });
+            if (room && room.participants.length === 0) {
+                room.isActive = false;
+                await room.save();
+                console.log(`[Socket] 🗑️ Room ${roomId} marked inactive after timeout`);
+                
+                // Clean up stats tracking
+                activeCallStats.delete(roomId);
+            }
+            roomCleanupTimers.delete(roomId);
+        } catch (error) {
+            console.error(`[Socket] ❌ Room cleanup error: ${error.message}`);
+        }
+    }, ROOM_CLEANUP_DELAY);
+
+    roomCleanupTimers.set(roomId, timer);
+}
+
+/**
+ * Save call statistics to database
+ */
+async function saveCallStats(roomId, socket) {
+    try {
+        if (!activeCallStats.has(roomId)) return;
+
+        const roomStats = activeCallStats.get(roomId);
+        const participantStats = roomStats.participants.get(socket.id);
+        
+        if (participantStats) {
+            const now = new Date();
+            const duration = Math.floor((now - roomStats.startTime) / 1000);
+
+            const stats = new Stats({
+                date: now,
+                type: 'call',
+                roomId: roomId,
+                userId: participantStats.userId,
+                bytesSent: participantStats.bytesSent,
+                bytesReceived: participantStats.bytesReceived,
+                callDuration: duration,
+                avgPacketLoss: participantStats.lastStats?.packetLoss || 0,
+                avgLatency: participantStats.lastStats?.latency || 0,
+                avgJitter: participantStats.lastStats?.jitter || 0,
+                startTime: roomStats.startTime,
+                endTime: now
+            });
+
+            await stats.save();
+            console.log(`[Socket] 📊 Saved stats for ${socket.username} in room ${roomId}`);
+
+            // Remove from tracking
+            roomStats.participants.delete(socket.id);
+        }
+    } catch (error) {
+        console.error(`[Socket] ❌ Save stats error: ${error.message}`);
+    }
+}
+
+/**
+ * Periodic cleanup of stale rooms
+ */
+function startPeriodicCleanup() {
+    setInterval(async () => {
+        try {
+            const tenSecondsAgo = new Date(Date.now() - ROOM_CLEANUP_DELAY);
+            
+            const staleRooms = await Room.find({
+                isActive: true,
+                participants: { $size: 0 },
+                lastActivity: { $lt: tenSecondsAgo }
+            });
+
+            for (const room of staleRooms) {
+                room.isActive = false;
+                await room.save();
+                console.log(`[Cleanup] 🗑️ Room ${room.roomId} marked inactive (periodic cleanup)`);
+            }
+        } catch (error) {
+            console.error(`[Cleanup] ❌ Periodic cleanup error: ${error.message}`);
+        }
+    }, 30000); // Run every 30 seconds
 }
 
 module.exports = setupSocketHandlers;
