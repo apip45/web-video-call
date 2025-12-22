@@ -435,10 +435,10 @@
         console.log(`[Room] 🎤 Mic: ${isMuted ? 'MUTED' : 'ON'}`);
     };
 
-    window.toggleCamera = function() {
+    window.toggleCamera = async function() {
         if (!webrtc) return;
         
-        const result = webrtc.toggleCamera();
+        const result = await webrtc.toggleCamera();
         
         if (ROOM_DATA.isAdmin) {
             // Admin: toggle actual track enable/disable

@@ -223,7 +223,7 @@ class WebRTCHandler {
      * For admin: toggle actual track enabled state
      * For non-admin (user): only toggle visual (track always stays enabled)
      */
-    toggleCamera() {
+    async toggleCamera() {
         if (!this.localStream) return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled };
 
         const videoTrack = this.localStream.getVideoTracks()[0];
@@ -235,6 +235,20 @@ class WebRTCHandler {
                 this.isCameraHidden = !this.isCameraTrackEnabled;
                 
                 console.log(`[WebRTC] 📹 Admin Camera: track=${this.isCameraTrackEnabled ? 'ON' : 'OFF'}`);
+                
+                // Force refresh track on sender when enabling camera
+                // This ensures remote peer receives the video after re-enabling
+                if (this.isCameraTrackEnabled && this.peerConnection) {
+                    const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                    if (sender) {
+                        try {
+                            await sender.replaceTrack(videoTrack);
+                            console.log('[WebRTC] 📹 Admin: Refreshed video track on sender');
+                        } catch (err) {
+                            console.warn('[WebRTC] ⚠️ Could not refresh track:', err.message);
+                        }
+                    }
+                }
             } else {
                 // Non-admin (user): only toggle visual, track stays always enabled
                 this.isCameraHidden = !this.isCameraHidden;
@@ -371,6 +385,13 @@ class WebRTCHandler {
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
                 console.log('[WebRTC] ✅ Connection established');
+                
+                // Send initial media status when connection is established
+                // This ensures remote peer knows our current camera/mic state
+                setTimeout(() => {
+                    this.sendMediaStatus();
+                    console.log('[WebRTC] 📡 Sent initial media status after connection');
+                }, 500);
                 break;
 
             case 'disconnected':
