@@ -27,6 +27,9 @@ class WebRTCHandler {
         this.currentCameraFacing = 'user'; // 'user' = front, 'environment' = back
         this.userRole = null; // Will be set by room.js
         this.audioContext = null; // Web Audio API for better mobile audio handling
+        this.isScreenSharing = false; // Screen sharing state
+        this.screenStream = null; // Screen share stream
+        this.originalVideoTrack = null; // Original camera track for restore
 
         // Reconnect config
         this.reconnectAttempts = 0;
@@ -319,6 +322,110 @@ class WebRTCHandler {
         }
 
         return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled };
+    }
+
+    /**
+     * Toggle screen sharing
+     */
+    async toggleScreenShare() {
+        try {
+            if (!this.isScreenSharing) {
+                // Start screen sharing
+                console.log('[WebRTC] 🖥️ Starting screen share...');
+                
+                this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        cursor: 'always',
+                        displaySurface: 'monitor'
+                    },
+                    audio: false
+                });
+
+                const screenTrack = this.screenStream.getVideoTracks()[0];
+                
+                // Save original camera track
+                this.originalVideoTrack = this.localStream.getVideoTracks()[0];
+                
+                // Replace video track in peer connection
+                if (this.peerConnection) {
+                    const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                    if (sender) {
+                        await sender.replaceTrack(screenTrack);
+                        console.log('[WebRTC] 🖥️ Screen track replaced in peer connection');
+                    }
+                }
+
+                // Listen for screen share end (user clicks "Stop sharing" in browser)
+                screenTrack.onended = () => {
+                    console.log('[WebRTC] 🖥️ Screen share stopped by user');
+                    this.stopScreenShare();
+                };
+
+                this.isScreenSharing = true;
+                console.log('[WebRTC] ✅ Screen sharing started');
+                
+                // Notify peer
+                if (this.socket && this.roomId) {
+                    this.socket.emit('screen-share-status', {
+                        roomId: this.roomId,
+                        isScreenSharing: true
+                    });
+                }
+                
+                return { success: true, isScreenSharing: true, screenStream: this.screenStream };
+            } else {
+                // Stop screen sharing
+                return await this.stopScreenShare();
+            }
+        } catch (error) {
+            console.error('[WebRTC] ❌ Screen share error:', error.message);
+            
+            // User cancelled or error
+            if (error.name === 'NotAllowedError') {
+                return { success: false, error: 'Izin screen sharing ditolak' };
+            }
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Stop screen sharing and restore camera
+     */
+    async stopScreenShare() {
+        try {
+            console.log('[WebRTC] 🖥️ Stopping screen share...');
+            
+            // Stop screen stream
+            if (this.screenStream) {
+                this.screenStream.getTracks().forEach(track => track.stop());
+                this.screenStream = null;
+            }
+
+            // Restore original camera track
+            if (this.originalVideoTrack && this.peerConnection) {
+                const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) {
+                    await sender.replaceTrack(this.originalVideoTrack);
+                    console.log('[WebRTC] 📹 Camera track restored');
+                }
+            }
+
+            this.isScreenSharing = false;
+            
+            // Notify peer
+            if (this.socket && this.roomId) {
+                this.socket.emit('screen-share-status', {
+                    roomId: this.roomId,
+                    isScreenSharing: false
+                });
+            }
+            
+            console.log('[WebRTC] ✅ Screen sharing stopped');
+            return { success: true, isScreenSharing: false };
+        } catch (error) {
+            console.error('[WebRTC] ❌ Stop screen share error:', error.message);
+            return { success: false, error: error.message };
+        }
     }
 
     /**

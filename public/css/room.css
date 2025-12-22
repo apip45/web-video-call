@@ -473,6 +473,20 @@
     display: block;
 }
 
+/* Screen share active state */
+.control-btn.active {
+    background: var(--color-primary);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+}
+
+.control-btn.active .icon-on {
+    display: none;
+}
+
+.control-btn.active .icon-off {
+    display: block;
+}
+
 /* End call button */
 .control-btn-danger {
     background: var(--color-error);

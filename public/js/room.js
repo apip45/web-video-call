@@ -43,6 +43,7 @@
         micBtn: document.getElementById('micBtn'),
         cameraBtn: document.getElementById('cameraBtn'),
         switchCameraBtn: document.getElementById('switchCameraBtn'),
+        screenShareBtn: document.getElementById('screenShareBtn'),
         hidePipBtn: document.getElementById('hidePipBtn'),
         endCallBtn: document.getElementById('endCallBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
@@ -139,6 +140,9 @@
 
         // Media status
         socket.on('media-status', handleRemoteMediaStatus);
+
+        // Screen share status
+        socket.on('screen-share-status', handleRemoteScreenShare);
 
         // Reconnection
         socket.on('reconnect-peer', handleReconnectPeer);
@@ -366,6 +370,16 @@
         }
     }
 
+    function handleRemoteScreenShare(data) {
+        console.log(`[Room] 🖥️ Remote screen share from ${data.username}: ${data.isScreenSharing ? 'STARTED' : 'STOPPED'}`);
+        
+        if (data.isScreenSharing) {
+            showToast(`🖥️ ${data.username} sedang share screen`, 'info');
+        } else {
+            showToast(`📹 ${data.username} kembali ke kamera`, 'info');
+        }
+    }
+
     function handleReconnectPeer(data) {
         console.log(`[Room] 🔄 Reconnect request from: ${data.username}`);
         webrtc.handleReconnectPeer(data.socketId, data.username);
@@ -590,6 +604,35 @@
             showToast('Kamera diubah', 'success');
         } else {
             showToast('Gagal mengubah kamera', 'error');
+        }
+    };
+
+    window.toggleScreenShare = async function() {
+        if (!webrtc) return;
+        
+        const screenShareBtn = document.getElementById('screenShareBtn');
+        const result = await webrtc.toggleScreenShare();
+        
+        if (result.success) {
+            if (result.isScreenSharing) {
+                screenShareBtn.classList.add('active');
+                showToast('🖥️ Screen sharing aktif', 'success');
+                
+                // Show screen share in local preview
+                if (result.screenStream) {
+                    elements.localVideo.srcObject = result.screenStream;
+                }
+            } else {
+                screenShareBtn.classList.remove('active');
+                showToast('📹 Kembali ke kamera', 'info');
+                
+                // Restore camera in local preview
+                if (webrtc.localStream) {
+                    elements.localVideo.srcObject = webrtc.localStream;
+                }
+            }
+        } else {
+            showToast(result.error || 'Gagal screen share', 'error');
         }
     };
 

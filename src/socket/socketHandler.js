@@ -261,6 +261,25 @@ const setupSocketHandlers = (io) => {
         });
 
         // =========================================================================
+        // SCREEN SHARE STATUS
+        // =========================================================================
+        socket.on('screen-share-status', async (data) => {
+            try {
+                const { roomId, isScreenSharing } = data;
+                console.log(`[Socket] 🖥️ Screen share status from ${socket.username}: ${isScreenSharing ? 'STARTED' : 'STOPPED'}`);
+
+                // Broadcast ke room (except sender)
+                socket.to(roomId).emit('screen-share-status', {
+                    socketId: socket.id,
+                    username: socket.username,
+                    isScreenSharing: isScreenSharing
+                });
+            } catch (error) {
+                console.error(`[Socket] ❌ Screen share status error: ${error.message}`);
+            }
+        });
+
+        // =========================================================================
         // WEBRTC STATS UPDATE
         // =========================================================================
         socket.on('webrtc-stats', async (data) => {
