@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a0a">
+    <title><%= title %> - Video Call</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-left">
+                <div class="logo-small">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                        <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                    </svg>
+                </div>
+                <span class="app-title">Video Call</span>
+            </div>
+            <div class="header-right">
+                <div class="user-info">
+                    <span class="user-name"><%= user.displayName || user.username %></span>
+                    <% if (user.role === 'admin') { %>
+                        <span class="badge badge-admin">Admin</span>
+                    <% } %>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+                <a href="/logout" class="btn btn-ghost btn-sm">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Create Room Section -->
+            <section class="section">
+                <h2 class="section-title">Mulai Video Call</h2>
+                
+                <div class="card create-room-card">
+                    <form action="/room/create" method="POST" class="create-room-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <input 
+                                    type="text" 
+                                    name="name" 
+                                    placeholder="Nama room (opsional)"
+                                    maxlength="50"
+                                >
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                                    <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                                </svg>
+                                Buat Room Baru
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div class="divider">
+                        <span>atau</span>
+                    </div>
+                    
+                    <form action="/room/join" method="GET" class="join-room-form" onsubmit="return joinRoom(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <input 
+                                    type="text" 
+                                    id="roomIdInput"
+                                    placeholder="Masukkan Room ID"
+                                    pattern="[a-zA-Z0-9-]+"
+                                    required
+                                >
+                            </div>
+                            <button type="submit" class="btn btn-secondary">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                                    <polyline points="10 17 15 12 10 7"/>
+                                    <line x1="15" y1="12" x2="3" y2="12"/>
+                                </svg>
+                                Gabung Room
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Recent Rooms -->
+            <section class="section">
+                <h2 class="section-title">Room Terakhir</h2>
+                
+                <% if (rooms && rooms.length > 0) { %>
+                    <div class="room-list">
+                        <% rooms.forEach(room => { %>
+                            <div class="room-card">
+                                <div class="room-info">
+                                    <h3 class="room-name"><%= room.name || `Room ${room.roomId}` %></h3>
+                                    <p class="room-id">ID: <%= room.roomId %></p>
+                                    <p class="room-meta">
+                                        <span class="participants">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                                <circle cx="9" cy="7" r="4"/>
+                                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                            </svg>
+                                            <%= room.participants.length %>/2
+                                        </span>
+                                        <span class="created-by">
+                                            oleh <%= room.createdBy?.displayName || room.createdBy?.username || 'Unknown' %>
+                                        </span>
+                                    </p>
+                                </div>
+                                <div class="room-actions">
+                                    <a href="/room/<%= room.roomId %>" class="btn btn-primary btn-sm">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                                            <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                                        </svg>
+                                        Join
+                                    </a>
+                                    <% if (user.id.toString() === room.createdBy?._id?.toString() || user.role === 'admin') { %>
+                                        <button class="btn btn-ghost btn-sm" onclick="deleteRoom('<%= room.roomId %>')">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="3 6 5 6 21 6"/>
+                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                            </svg>
+                                        </button>
+                                    <% } %>
+                                </div>
+                            </div>
+                        <% }); %>
+                    </div>
+                <% } else { %>
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M15.6 11.6L22 7v10l-6.4-4.6v-1z"/>
+                            <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+                        </svg>
+                        <p>Belum ada room. Buat room baru untuk memulai video call.</p>
+                    </div>
+                <% } %>
+            </section>
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script>
+        // Join room dengan redirect
+        function joinRoom(e) {
+            e.preventDefault();
+            const roomId = document.getElementById('roomIdInput').value.trim();
+            if (roomId) {
+                window.location.href = `/room/${roomId}`;
+            }
+            return false;
+        }
+
+        // Delete room
+        async function deleteRoom(roomId) {
+            if (!confirm('Hapus room ini?')) return;
+            
+            try {
+                const response = await fetch(`/room/${roomId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Gagal menghapus room');
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Gagal menghapus room');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,538 @@
+/**
+ * =============================================================================
+ * ROOM STYLES - VIDEO CALL
+ * =============================================================================
+ * Styles khusus untuk halaman video call
+ * Mobile-first, fullscreen video
+ */
+
+/* =============================================================================
+   ROOM BODY (Disable scroll)
+   ============================================================================= */
+.room-body {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+/* =============================================================================
+   VIDEO CONTAINER
+   ============================================================================= */
+.video-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #000;
+    z-index: 1;
+}
+
+/* =============================================================================
+   REMOTE VIDEO (FULLSCREEN)
+   ============================================================================= */
+.remote-video-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
+}
+
+#remoteVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.remote-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: var(--spacing-lg);
+    padding-top: calc(var(--spacing-lg) + env(safe-area-inset-top));
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.remote-user-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+#remoteUsername {
+    font-size: 1rem;
+    font-weight: 500;
+    color: white;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.remote-status {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    background: rgba(239, 68, 68, 0.9);
+    border-radius: var(--radius-full);
+    color: white;
+}
+
+.status-indicator svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.status-indicator.hidden {
+    display: none;
+}
+
+/* =============================================================================
+   WAITING STATE
+   ============================================================================= */
+.waiting-state {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
+    z-index: 4;
+}
+
+.waiting-state.hidden {
+    display: none;
+}
+
+.waiting-content {
+    text-align: center;
+    color: white;
+    padding: var(--spacing-lg);
+}
+
+.waiting-content svg {
+    width: 4rem;
+    height: 4rem;
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-md);
+}
+
+.waiting-content p {
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-secondary);
+}
+
+.room-id-display {
+    font-size: 1.125rem;
+    margin-bottom: var(--spacing-lg) !important;
+}
+
+.room-id-display strong {
+    color: var(--color-primary);
+    font-family: monospace;
+    letter-spacing: 1px;
+}
+
+/* Pulse animation */
+.pulse-ring {
+    position: absolute;
+    width: 6rem;
+    height: 6rem;
+    border-radius: 50%;
+    border: 2px solid var(--color-primary);
+    animation: pulse-ring 2s ease-out infinite;
+    opacity: 0;
+}
+
+@keyframes pulse-ring {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* =============================================================================
+   LOCAL VIDEO (PIP - Picture in Picture)
+   ============================================================================= */
+.local-video-wrapper {
+    position: absolute;
+    bottom: 100px;
+    right: var(--spacing-md);
+    width: 120px;
+    height: 160px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: #1a1a1a;
+    box-shadow: var(--shadow-lg);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    z-index: 10;
+    touch-action: none;
+    cursor: move;
+}
+
+#localVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror effect */
+}
+
+.local-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+    font-size: 0.75rem;
+    color: white;
+    text-align: center;
+}
+
+.local-status {
+    position: absolute;
+    top: var(--spacing-xs);
+    right: var(--spacing-xs);
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+.local-status .status-indicator {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.local-status .status-indicator svg {
+    width: 0.75rem;
+    height: 0.75rem;
+}
+
+/* Responsive PIP size */
+@media (max-width: 480px) {
+    .local-video-wrapper {
+        width: 90px;
+        height: 120px;
+        bottom: 90px;
+    }
+}
+
+@media (min-width: 768px) {
+    .local-video-wrapper {
+        width: 180px;
+        height: 240px;
+    }
+}
+
+/* =============================================================================
+   CONTROLS BAR
+   ============================================================================= */
+.controls-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7), transparent);
+    z-index: 20;
+}
+
+.controls-left,
+.controls-right {
+    display: flex;
+    gap: var(--spacing-sm);
+    min-width: 80px;
+}
+
+.controls-center {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* =============================================================================
+   CONTROL BUTTONS
+   ============================================================================= */
+.control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    transition: all var(--transition-fast);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.control-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+.control-btn:active {
+    transform: scale(0.95);
+}
+
+.control-btn svg {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+/* Icon toggle states */
+.control-btn .icon-off,
+.control-btn .icon-shrink,
+.control-btn .icon-earpiece {
+    display: none;
+}
+
+.control-btn.active .icon-on,
+.control-btn.active .icon-expand,
+.control-btn.active .icon-speaker {
+    display: none;
+}
+
+.control-btn.active .icon-off,
+.control-btn.active .icon-shrink,
+.control-btn.active .icon-earpiece {
+    display: block;
+}
+
+/* Muted/Camera off state */
+.control-btn.muted,
+.control-btn.camera-off {
+    background: rgba(239, 68, 68, 0.8);
+}
+
+.control-btn.muted .icon-on,
+.control-btn.camera-off .icon-on {
+    display: none;
+}
+
+.control-btn.muted .icon-off,
+.control-btn.camera-off .icon-off {
+    display: block;
+}
+
+/* End call button */
+.control-btn-danger {
+    background: var(--color-error);
+}
+
+.control-btn-danger:hover {
+    background: #dc2626;
+}
+
+/* Ghost control button */
+.controls-bar .btn-ghost {
+    color: white;
+}
+
+.controls-bar .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* =============================================================================
+   CONNECTION STATUS OVERLAY
+   ============================================================================= */
+.connection-status {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 30;
+    display: none;
+}
+
+.connection-status.visible {
+    display: block;
+}
+
+.status-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: rgba(0, 0, 0, 0.9);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+#statusText {
+    color: white;
+    font-size: 0.875rem;
+}
+
+/* =============================================================================
+   TOAST NOTIFICATIONS
+   ============================================================================= */
+.toast-container {
+    position: fixed;
+    top: var(--spacing-lg);
+    right: var(--spacing-md);
+    left: var(--spacing-md);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: rgba(0, 0, 0, 0.9);
+    border-radius: var(--radius-md);
+    color: white;
+    font-size: 0.875rem;
+    animation: toast-in 0.3s ease;
+    pointer-events: auto;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.toast.success {
+    border-left: 3px solid var(--color-success);
+}
+
+.toast.error {
+    border-left: 3px solid var(--color-error);
+}
+
+.toast.info {
+    border-left: 3px solid var(--color-info);
+}
+
+.toast svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+}
+
+@keyframes toast-in {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes toast-out {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+}
+
+.toast.fade-out {
+    animation: toast-out 0.3s ease forwards;
+}
+
+/* =============================================================================
+   FULLSCREEN MODE
+   ============================================================================= */
+.video-container.fullscreen .controls-bar {
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.video-container.fullscreen:hover .controls-bar,
+.video-container.fullscreen:active .controls-bar {
+    opacity: 1;
+}
+
+/* Hide controls when in fullscreen (show on tap/hover) */
+.video-container.controls-hidden .controls-bar {
+    transform: translateY(100%);
+    transition: transform var(--transition-normal);
+}
+
+.video-container.controls-hidden:active .controls-bar {
+    transform: translateY(0);
+}
+
+/* =============================================================================
+   LANDSCAPE OPTIMIZATION
+   ============================================================================= */
+@media (orientation: landscape) and (max-height: 500px) {
+    .controls-bar {
+        padding: var(--spacing-sm);
+    }
+    
+    .control-btn {
+        width: 2.75rem;
+        height: 2.75rem;
+    }
+    
+    .control-btn svg {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+    
+    .local-video-wrapper {
+        width: 100px;
+        height: 75px;
+        bottom: 70px;
+    }
+}
+
+/* =============================================================================
+   SAFE AREA PADDING (iPhone X+)
+   ============================================================================= */
+@supports (padding: env(safe-area-inset-bottom)) {
+    .controls-bar {
+        padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+    }
+    
+    .local-video-wrapper {
+        bottom: calc(100px + env(safe-area-inset-bottom));
+    }
+}
