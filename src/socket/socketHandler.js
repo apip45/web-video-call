@@ -55,13 +55,22 @@ const setupSocketHandlers = (io) => {
                     console.log(`[Socket] ⏱️ Cancelled cleanup timer for room: ${roomId}`);
                 }
 
-                // Cari atau buat room
-                let room = await Room.findOne({ roomId: roomId, isActive: true });
+                // Cari room (termasuk inactive untuk reaktivasi)
+                let room = await Room.findOne({ roomId: roomId });
                 
                 if (!room) {
                     console.log(`[Socket] ❌ Room not found: ${roomId}`);
                     socket.emit('error', { message: 'Room tidak ditemukan' });
                     return;
+                }
+                
+                // Reaktivasi room jika inactive
+                if (!room.isActive) {
+                    console.log(`[Socket] 🔄 Reactivating room via socket: ${roomId}`);
+                    room.isActive = true;
+                    room.participants = []; // Clear old participants
+                    room.lastActivity = new Date();
+                    await room.save();
                 }
 
                 // Cek apakah user sudah di room

@@ -456,9 +456,14 @@ class WebRTCHandler {
             console.log(`[WebRTC] 📥 Received offer from: ${senderUsername}`);
             this.remoteSocketId = senderSocketId;
 
-            if (!this.peerConnection) {
-                this.createPeerConnection();
+            // Close existing peer connection if any (for reconnection scenarios)
+            if (this.peerConnection) {
+                console.log('[WebRTC] 🔄 Closing existing peer connection before handling new offer');
+                this.closePeerConnection();
             }
+            
+            // Create new peer connection
+            this.createPeerConnection();
 
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             

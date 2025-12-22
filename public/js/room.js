@@ -244,9 +244,16 @@
             hideConnectionStatus();
             showWaitingState();
         } else {
-            // Second user, will receive offer
+            // Second user joining - the existing user will send us an offer
+            // We just need to wait and be ready to receive it
             hideConnectionStatus();
             showConnectionStatus('Menghubungkan video call...');
+            
+            // Close any stale peer connection from previous session
+            if (webrtc.peerConnection) {
+                console.log('[Room] 🔄 Closing stale peer connection');
+                webrtc.closePeerConnection();
+            }
         }
     }
 
@@ -265,18 +272,24 @@
     }
 
     function handleUserJoined(data) {
-        console.log(`[Room] 👤 User joined: ${data.username} (${data.socketId})`);
+        console.log(`[Room] 👤 User joined: ${data.username} (${data.socketId}) - role: ${data.userRole}`);
         showToast(`${data.username} bergabung`, 'success');
 
         // Update remote username display
         elements.remoteUsername.textContent = data.username;
 
-        // If I'm initiator, create offer
-        if (webrtc.isInitiator) {
-            console.log('[Room] 🎯 I am initiator, creating offer...');
-            webrtc.createPeerConnection();
-            webrtc.createOffer(data.socketId);
+        // Close any existing peer connection first
+        if (webrtc.peerConnection) {
+            console.log('[Room] 🔄 Closing existing peer connection before creating new one');
+            webrtc.closePeerConnection();
         }
+
+        // Determine who should be the offerer to avoid glare condition
+        // Rule: The person who was already in the room (received user-joined) creates the offer
+        // This means WE create the offer since WE received the user-joined event
+        console.log('[Room] 🎯 Creating offer to connect with new user...');
+        webrtc.createPeerConnection();
+        webrtc.createOffer(data.socketId);
 
         hideWaitingState();
     }
@@ -292,8 +305,12 @@
         // Show waiting state
         showWaitingState();
 
-        // Close peer connection
+        // Close peer connection and reset state
         webrtc.closePeerConnection();
+        
+        // Reset initiator status - next person who joins will get an offer from us
+        webrtc.isInitiator = true;
+        console.log('[Room] 🔄 Reset to initiator mode, waiting for new peer');
     }
 
     function handleOffer(data) {

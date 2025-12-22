@@ -83,8 +83,8 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
 
         console.log(`[Room] 🚪 User ${req.session.username} entering room: ${roomId}`);
 
-        // Cari room
-        let room = await Room.findOne({ roomId: roomId, isActive: true })
+        // Cari room (termasuk yang inactive untuk reaktivasi)
+        let room = await Room.findOne({ roomId: roomId })
             .populate('createdBy', 'username displayName')
             .populate('participants.user', 'username displayName');
 
@@ -99,6 +99,13 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
             await room.save();
             room = await Room.findById(room._id)
                 .populate('createdBy', 'username displayName');
+        } else if (!room.isActive) {
+            // Reaktivasi room yang inactive
+            console.log(`[Room] 🔄 Reactivating room: ${roomId}`);
+            room.isActive = true;
+            room.participants = []; // Clear old participants
+            room.lastActivity = new Date();
+            await room.save();
         }
 
         // Cek apakah room penuh
