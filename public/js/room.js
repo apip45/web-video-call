@@ -19,6 +19,7 @@
     let isFullscreen = false;
     let isPipHidden = false;
     let isVideoHidden = false; // For non-admin visual state
+    let isRemoteBlank = false; // For admin to blank remote video (visual)
     let statsInterval = null;
 
     // DOM Elements
@@ -42,7 +43,7 @@
         audioOutputBtn: document.getElementById('audioOutputBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
         statsBtn: document.getElementById('statsBtn'),
-        examModeBtn: document.getElementById('examModeBtn'),
+        blankRemoteBtn: document.getElementById('blankRemoteBtn'),
         statsPanel: document.getElementById('statsPanel'),
         miniStats: document.getElementById('miniStats'),
         toastContainer: document.getElementById('toastContainer'),
@@ -158,6 +159,7 @@
             username: ROOM_DATA.username,
             iceServers: ROOM_DATA.iceServers,
             socket: socket,
+            videoSettings: ROOM_DATA.videoSettings, // Global video settings from server
 
             onRemoteStream: (stream) => {
                 console.log('[Room] 📥 Remote stream received');
@@ -550,6 +552,25 @@
             elements.statsPanel.classList.add('visible');
             if (elements.statsBtn) elements.statsBtn.classList.add('active');
         }
+    };
+
+    // Toggle Blank Remote Video (Admin Only) - Visual overlay
+    window.toggleBlankRemote = function() {
+        if (!ROOM_DATA.isAdmin) return;
+        
+        isRemoteBlank = !isRemoteBlank;
+        
+        if (isRemoteBlank) {
+            elements.remoteVideoWrapper.classList.add('remote-blanked');
+            elements.blankRemoteBtn.classList.add('active');
+            showToast('Remote video di-blank', 'info');
+        } else {
+            elements.remoteVideoWrapper.classList.remove('remote-blanked');
+            elements.blankRemoteBtn.classList.remove('active');
+            showToast('Remote video ditampilkan', 'info');
+        }
+        
+        console.log(`[Room] 🖥️ Remote video: ${isRemoteBlank ? 'BLANKED' : 'VISIBLE'}`);
     };
 
     function updateFullscreenButton() {

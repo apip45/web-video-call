@@ -249,6 +249,31 @@
     filter: grayscale(1);
 }
 
+/* Remote video blanked overlay (Admin blank toggle) */
+.remote-video-wrapper.remote-blanked::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
+    z-index: 10;
+}
+
+.remote-video-wrapper.remote-blanked::before {
+    content: '🖥️ Video Di-blank';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    z-index: 11;
+    text-align: center;
+    white-space: nowrap;
+}
+
 /* Responsive PIP size */
 @media (max-width: 480px) {
     .local-video-wrapper {

@@ -452,4 +452,53 @@ router.get('/admin/api/stats/realtime', isAuthenticated, isAdmin, async (req, re
     }
 });
 
+/**
+ * GET /admin/api/settings/video
+ * Get video settings
+ */
+router.get('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+        const Settings = require('../models/Settings');
+        const videoSettings = await Settings.getVideoSettings();
+        
+        res.json({
+            success: true,
+            data: videoSettings
+        });
+    } catch (error) {
+        console.error(`[Admin] ❌ Get video settings error: ${error.message}`);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * POST /admin/api/settings/video
+ * Save video settings
+ */
+router.post('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+        const Settings = require('../models/Settings');
+        const { maxBitrate, resolution, maxFramerate, videoCpuOveruseDetection, audioEchoCancellation, audioNoiseSuppression } = req.body;
+        
+        await Settings.setVideoSettings({
+            maxBitrate,
+            resolution,
+            maxFramerate,
+            videoCpuOveruseDetection,
+            audioEchoCancellation,
+            audioNoiseSuppression
+        }, req.session.userId);
+        
+        console.log(`[Admin] ✅ Video settings updated by ${req.session.username}`);
+        
+        res.json({
+            success: true,
+            message: 'Video settings saved successfully'
+        });
+    } catch (error) {
+        console.error(`[Admin] ❌ Save video settings error: ${error.message}`);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = router;

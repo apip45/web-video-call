@@ -247,6 +247,97 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Video Call Settings -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>⚙️ Pengaturan Video Call (Global)</h3>
+                    <span class="badge badge-info">Server Optimization</span>
+                </div>
+                <div class="card-body">
+                    <form id="videoSettingsForm" class="settings-form">
+                        <div class="settings-grid">
+                            <!-- Max Bitrate -->
+                            <div class="form-group">
+                                <label for="maxBitrate">Max Bitrate (kbps)</label>
+                                <select id="maxBitrate" name="maxBitrate" class="form-control">
+                                    <option value="300">300 kbps (Low)</option>
+                                    <option value="500">500 kbps (Medium-Low)</option>
+                                    <option value="800">800 kbps (Medium)</option>
+                                    <option value="1000">1000 kbps (Medium-High)</option>
+                                    <option value="1500">1500 kbps (High)</option>
+                                    <option value="2500">2500 kbps (Very High)</option>
+                                    <option value="4000">4000 kbps (Ultra)</option>
+                                </select>
+                                <small class="form-hint">Bitrate lebih rendah = hemat bandwidth</small>
+                            </div>
+
+                            <!-- Resolution -->
+                            <div class="form-group">
+                                <label for="resolution">Resolusi Video</label>
+                                <select id="resolution" name="resolution" class="form-control">
+                                    <option value="360p">360p (640x360) - Hemat</option>
+                                    <option value="480p">480p (854x480) - Standard</option>
+                                    <option value="720p">720p (1280x720) - HD</option>
+                                    <option value="1080p">1080p (1920x1080) - Full HD</option>
+                                </select>
+                                <small class="form-hint">Resolusi lebih rendah = hemat bandwidth & CPU</small>
+                            </div>
+
+                            <!-- Frame Rate -->
+                            <div class="form-group">
+                                <label for="maxFramerate">Max Frame Rate (FPS)</label>
+                                <select id="maxFramerate" name="maxFramerate" class="form-control">
+                                    <option value="15">15 FPS (Low)</option>
+                                    <option value="24">24 FPS (Cinema)</option>
+                                    <option value="30">30 FPS (Standard)</option>
+                                    <option value="60">60 FPS (Smooth)</option>
+                                </select>
+                                <small class="form-hint">FPS lebih rendah = hemat bandwidth & CPU</small>
+                            </div>
+
+                            <!-- CPU Overuse Detection -->
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="videoCpuOveruseDetection" name="videoCpuOveruseDetection" checked>
+                                    <span>CPU Overuse Detection</span>
+                                </label>
+                                <small class="form-hint">Otomatis turunkan kualitas jika CPU overload</small>
+                            </div>
+
+                            <!-- Audio Echo Cancellation -->
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="audioEchoCancellation" name="audioEchoCancellation" checked>
+                                    <span>Echo Cancellation</span>
+                                </label>
+                                <small class="form-hint">Kurangi echo pada audio</small>
+                            </div>
+
+                            <!-- Audio Noise Suppression -->
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="audioNoiseSuppression" name="audioNoiseSuppression" checked>
+                                    <span>Noise Suppression</span>
+                                </label>
+                                <small class="form-hint">Kurangi noise background</small>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="saveSettingsBtn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                    <polyline points="17 21 17 13 7 13 7 21"/>
+                                    <polyline points="7 3 7 8 15 8"/>
+                                </svg>
+                                Simpan Pengaturan
+                            </button>
+                            <span id="settingsSaveStatus" class="save-status"></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -265,6 +356,97 @@
                 console.error('[Admin] Failed to fetch stats:', error);
             }
         }, 30000);
+
+        // ====================================================================
+        // VIDEO SETTINGS
+        // ====================================================================
+        
+        // Load video settings on page load
+        async function loadVideoSettings() {
+            try {
+                const response = await fetch('/admin/api/settings/video');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const settings = data.data;
+                    
+                    // Set form values
+                    document.getElementById('maxBitrate').value = settings.maxBitrate;
+                    document.getElementById('resolution').value = settings.resolution;
+                    document.getElementById('maxFramerate').value = settings.maxFramerate;
+                    document.getElementById('videoCpuOveruseDetection').checked = settings.videoCpuOveruseDetection;
+                    document.getElementById('audioEchoCancellation').checked = settings.audioEchoCancellation;
+                    document.getElementById('audioNoiseSuppression').checked = settings.audioNoiseSuppression;
+                    
+                    console.log('[Admin] Video settings loaded:', settings);
+                }
+            } catch (error) {
+                console.error('[Admin] Failed to load video settings:', error);
+            }
+        }
+
+        // Save video settings
+        document.getElementById('videoSettingsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const saveBtn = document.getElementById('saveSettingsBtn');
+            const statusEl = document.getElementById('settingsSaveStatus');
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-small"></span> Menyimpan...';
+            
+            try {
+                const settings = {
+                    maxBitrate: parseInt(document.getElementById('maxBitrate').value),
+                    resolution: document.getElementById('resolution').value,
+                    maxFramerate: parseInt(document.getElementById('maxFramerate').value),
+                    videoCpuOveruseDetection: document.getElementById('videoCpuOveruseDetection').checked,
+                    audioEchoCancellation: document.getElementById('audioEchoCancellation').checked,
+                    audioNoiseSuppression: document.getElementById('audioNoiseSuppression').checked
+                };
+                
+                const response = await fetch('/admin/api/settings/video', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.className = 'save-status success';
+                    statusEl.textContent = '✓ Tersimpan!';
+                    console.log('[Admin] Video settings saved successfully');
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (error) {
+                statusEl.className = 'save-status error';
+                statusEl.textContent = '✕ Gagal menyimpan';
+                console.error('[Admin] Failed to save video settings:', error);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                    Simpan Pengaturan
+                `;
+                
+                // Clear status after 3 seconds
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                    statusEl.className = 'save-status';
+                }, 3000);
+            }
+        });
+
+        // Load settings on page load
+        loadVideoSettings();
     </script>
 </body>
 </html>

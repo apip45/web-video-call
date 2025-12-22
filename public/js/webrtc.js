@@ -43,6 +43,19 @@ class WebRTCHandler {
 
         console.log('[WebRTC] 🔧 Handler initialized');
         console.log(`[WebRTC] 🌐 ICE servers: ${this.iceServers.length}`);
+        
+        // Video settings from server (global settings)
+        this.videoSettings = options.videoSettings || {
+            maxBitrate: 1500,
+            resolution: '720p',
+            maxFramerate: 30,
+            width: 1280,
+            height: 720,
+            videoCpuOveruseDetection: true,
+            audioEchoCancellation: true,
+            audioNoiseSuppression: true
+        };
+        console.log(`[WebRTC] ⚙️ Video settings:`, this.videoSettings);
     }
 
     /**
@@ -53,21 +66,23 @@ class WebRTCHandler {
 
     /**
      * Get local media stream (camera + mic)
+     * Uses global video settings from server
      */
     async getLocalStream() {
         try {
             console.log('[WebRTC] 📹 Requesting local media stream...');
+            console.log(`[WebRTC] ⚙️ Using settings: ${this.videoSettings.resolution}, ${this.videoSettings.maxFramerate}fps, ${this.videoSettings.maxBitrate}kbps`);
 
             const constraints = {
                 video: {
-                    width: { ideal: 1280, max: 1920 },
-                    height: { ideal: 720, max: 1080 },
+                    width: { ideal: this.videoSettings.width, max: 1920 },
+                    height: { ideal: this.videoSettings.height, max: 1080 },
                     facingMode: this.currentCameraFacing,
-                    frameRate: { ideal: 30, max: 60 }
+                    frameRate: { ideal: this.videoSettings.maxFramerate, max: 60 }
                 },
                 audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
+                    echoCancellation: this.videoSettings.audioEchoCancellation,
+                    noiseSuppression: this.videoSettings.audioNoiseSuppression,
                     autoGainControl: true
                 }
             };
@@ -274,8 +289,13 @@ class WebRTCHandler {
         // Add local tracks
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
-                this.peerConnection.addTrack(track, this.localStream);
+                const sender = this.peerConnection.addTrack(track, this.localStream);
                 console.log(`[WebRTC] ➕ Added local track: ${track.kind}`);
+                
+                // Apply bitrate constraint for video
+                if (track.kind === 'video' && this.videoSettings.maxBitrate) {
+                    this.applyBitrateConstraint(sender);
+                }
             });
         }
 
@@ -317,6 +337,26 @@ class WebRTCHandler {
 
         console.log('[WebRTC] ✅ Peer connection created');
         return this.peerConnection;
+    }
+
+    /**
+     * Apply bitrate constraint to video sender
+     */
+    async applyBitrateConstraint(sender) {
+        try {
+            const params = sender.getParameters();
+            if (!params.encodings) {
+                params.encodings = [{}];
+            }
+            
+            // Set max bitrate in bits per second (settings are in kbps)
+            params.encodings[0].maxBitrate = this.videoSettings.maxBitrate * 1000;
+            
+            await sender.setParameters(params);
+            console.log(`[WebRTC] ⚙️ Applied bitrate constraint: ${this.videoSettings.maxBitrate} kbps`);
+        } catch (error) {
+            console.warn('[WebRTC] ⚠️ Could not apply bitrate constraint:', error.message);
+        }
     }
 
     /**

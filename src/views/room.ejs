@@ -215,6 +215,21 @@
                     <line x1="6" y1="20" x2="6" y2="14"/>
                 </svg>
             </button>
+
+            <!-- Blank Remote Video (Admin) -->
+            <button class="control-btn" id="blankRemoteBtn" onclick="toggleBlankRemote()" title="Blank Remote Video">
+                <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+                <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                    <line x1="2" y1="2" x2="22" y2="22"/>
+                </svg>
+            </button>
             <% } %>
 
             <!-- Audio Output (Mobile) -->
@@ -267,7 +282,8 @@
             username: '<%= username %>',
             userRole: '<%= userRole || "user" %>',
             isAdmin: <%= isAdmin ? 'true' : 'false' %>,
-            iceServers: <%- iceServers %>
+            iceServers: <%- iceServers %>,
+            videoSettings: <%- videoSettings %>
         };
     </script>
     

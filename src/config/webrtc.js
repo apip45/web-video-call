@@ -42,6 +42,15 @@ const getIceServers = () => {
         });
     }
 
+    // TURNS Server (TLS - untuk tembus firewall ketat)
+    if (process.env.TURNS_SERVER_URL) {
+        iceServers.push({
+            urls: process.env.TURNS_SERVER_URL,
+            username: process.env.TURNS_SERVER_USERNAME || '',
+            credential: process.env.TURNS_SERVER_CREDENTIAL || ''
+        });
+    }
+
     console.log(`[WebRTC] 🌐 ICE Servers configured: ${iceServers.length} servers`);
     return iceServers;
 };

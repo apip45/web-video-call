@@ -114,6 +114,11 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
         // Get ICE servers configuration
         const iceServers = getIceServers();
 
+        // Get global video settings
+        const Settings = require('../models/Settings');
+        const videoSettings = await Settings.getVideoSettings();
+        const resolutionDimensions = Settings.getResolutionDimensions(videoSettings.resolution);
+
         res.render('room', {
             title: `Video Call - ${room.name}`,
             room: room,
@@ -121,7 +126,12 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
             userId: req.session.userId,
             username: req.session.displayName || req.session.username,
             userRole: req.session.role,
-            isAdmin: req.session.role === 'admin'
+            isAdmin: req.session.role === 'admin',
+            videoSettings: JSON.stringify({
+                ...videoSettings,
+                width: resolutionDimensions.width,
+                height: resolutionDimensions.height
+            })
         });
     } catch (error) {
         console.error(`[Room] ❌ Error entering room: ${error.message}`);
