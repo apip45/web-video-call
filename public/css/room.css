@@ -305,6 +305,59 @@
     padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
     background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7), transparent);
     z-index: 20;
+    
+    /* Auto-hide animation */
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Hidden state for controls */
+.controls-bar.controls-hidden {
+    opacity: 0;
+    transform: translateY(100%);
+    pointer-events: none;
+}
+
+/* Show controls on hover (desktop) */
+@media (hover: hover) and (pointer: fine) {
+    .video-container:hover .controls-bar.controls-hidden {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+    
+    .controls-bar:hover {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+}
+
+/* Also hide local video PIP when controls are hidden */
+.local-video-wrapper {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.controls-hidden-mode .local-video-wrapper {
+    opacity: 0.3;
+}
+
+.controls-hidden-mode:hover .local-video-wrapper,
+.controls-hidden-mode.controls-visible .local-video-wrapper {
+    opacity: 1;
+}
+
+/* Hide remote overlay info when controls hidden */
+.remote-overlay {
+    transition: opacity 0.3s ease;
+}
+
+.controls-hidden-mode .remote-overlay {
+    opacity: 0;
+}
+
+.controls-hidden-mode:hover .remote-overlay,
+.controls-hidden-mode.controls-visible .remote-overlay {
+    opacity: 1;
 }
 
 .controls-left,
@@ -736,6 +789,18 @@
 }
 
 .mini-stats.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Hide mini-stats when controls are hidden */
+.controls-hidden-mode .mini-stats.visible {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.controls-hidden-mode:hover .mini-stats.visible,
+.controls-hidden-mode.controls-visible .mini-stats.visible {
     opacity: 1;
     visibility: visible;
 }

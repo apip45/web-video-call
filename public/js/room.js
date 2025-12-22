@@ -21,6 +21,11 @@
     let isVideoHidden = false; // For non-admin visual state
     let isRemoteBlank = false; // For admin to blank remote video (visual)
     let statsInterval = null;
+    
+    // Auto-hide controls
+    let controlsHideTimeout = null;
+    let controlsVisible = true;
+    const CONTROLS_HIDE_DELAY = 3000; // 3 seconds
 
     // DOM Elements
     const elements = {
@@ -47,7 +52,8 @@
         statsPanel: document.getElementById('statsPanel'),
         miniStats: document.getElementById('miniStats'),
         toastContainer: document.getElementById('toastContainer'),
-        videoContainer: document.getElementById('videoContainer')
+        videoContainer: document.getElementById('videoContainer'),
+        controlsBar: document.getElementById('controlsBar')
     };
 
     // ==========================================================================
@@ -412,6 +418,103 @@
         document.addEventListener('fullscreenchange', () => {
             isFullscreen = !!document.fullscreenElement;
             updateFullscreenButton();
+        });
+        
+        // Setup auto-hide controls
+        setupAutoHideControls();
+    }
+    
+    // ==========================================================================
+    // AUTO-HIDE CONTROLS
+    // ==========================================================================
+    
+    function setupAutoHideControls() {
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        
+        // Function to show controls
+        function showControls() {
+            controlsVisible = true;
+            elements.controlsBar.classList.remove('controls-hidden');
+            elements.videoContainer.classList.add('controls-visible');
+            elements.videoContainer.classList.remove('controls-hidden-mode');
+            resetHideTimer();
+        }
+        
+        // Function to hide controls
+        function hideControls() {
+            // Don't hide if waiting for peer or during connection
+            if (!elements.waitingState.classList.contains('hidden')) {
+                return;
+            }
+            
+            controlsVisible = false;
+            elements.controlsBar.classList.add('controls-hidden');
+            elements.videoContainer.classList.remove('controls-visible');
+            elements.videoContainer.classList.add('controls-hidden-mode');
+        }
+        
+        // Reset the hide timer
+        function resetHideTimer() {
+            if (controlsHideTimeout) {
+                clearTimeout(controlsHideTimeout);
+            }
+            controlsHideTimeout = setTimeout(hideControls, CONTROLS_HIDE_DELAY);
+        }
+        
+        // Start initial timer
+        resetHideTimer();
+        
+        if (isTouchDevice) {
+            // Mobile: tap anywhere on video to toggle controls
+            elements.videoContainer.addEventListener('click', (e) => {
+                // Don't toggle if clicking on controls or buttons
+                if (e.target.closest('.controls-bar') || 
+                    e.target.closest('.control-btn') || 
+                    e.target.closest('.local-video-wrapper') ||
+                    e.target.closest('.waiting-state') ||
+                    e.target.closest('.stats-panel') ||
+                    e.target.tagName === 'BUTTON') {
+                    resetHideTimer();
+                    return;
+                }
+                
+                if (controlsVisible) {
+                    hideControls();
+                    if (controlsHideTimeout) {
+                        clearTimeout(controlsHideTimeout);
+                    }
+                } else {
+                    showControls();
+                }
+            });
+            
+            // Keep controls visible when interacting with them
+            elements.controlsBar.addEventListener('touchstart', () => {
+                showControls();
+            });
+        } else {
+            // Desktop: show on mouse move, hide after delay
+            elements.videoContainer.addEventListener('mousemove', () => {
+                showControls();
+            });
+            
+            // Keep controls visible when hovering over them
+            elements.controlsBar.addEventListener('mouseenter', () => {
+                if (controlsHideTimeout) {
+                    clearTimeout(controlsHideTimeout);
+                }
+                showControls();
+            });
+            
+            elements.controlsBar.addEventListener('mouseleave', () => {
+                resetHideTimer();
+            });
+        }
+        
+        // Also show controls when using keyboard
+        document.addEventListener('keydown', (e) => {
+            // Show controls on any key press
+            showControls();
         });
     }
 
