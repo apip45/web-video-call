@@ -26,6 +26,7 @@ class WebRTCHandler {
         this.usingSpeaker = true;
         this.currentCameraFacing = 'user'; // 'user' = front, 'environment' = back
         this.userRole = null; // Will be set by room.js
+        this.audioContext = null; // Web Audio API for better mobile audio handling
 
         // Reconnect config
         this.reconnectAttempts = 0;
@@ -81,8 +82,8 @@ class WebRTCHandler {
                     frameRate: { ideal: this.videoSettings.maxFramerate, max: 60 }
                 },
                 audio: {
-                    echoCancellation: this.videoSettings.audioEchoCancellation,
-                    noiseSuppression: this.videoSettings.audioNoiseSuppression,
+                    echoCancellation: true,
+                    noiseSuppression: true,
                     autoGainControl: true
                 }
             };
@@ -178,22 +179,78 @@ class WebRTCHandler {
 
     /**
      * Toggle audio output (speaker/earpiece) - Mobile
+     * Note: This feature has limited browser support on mobile devices
+     * 
+     * Methods attempted:
+     * 1. setSinkId() - Only works on desktop Chrome, not mobile
+     * 2. AudioContext routing - Limited control over output device
+     * 3. For most mobile browsers, this is controlled by the OS/hardware
+     * 
+     * Workaround: We can try to use setSinkId with 'default' vs specific device
      */
-    toggleAudioOutput(remoteVideoElement) {
-        if (!remoteVideoElement) return false;
+    async toggleAudioOutput(remoteVideoElement) {
+        if (!remoteVideoElement) return this.usingSpeaker;
 
         try {
             this.usingSpeaker = !this.usingSpeaker;
             
-            // Use sinkId if supported (Chrome)
+            // Method 1: Try setSinkId if available (Chrome/Edge on desktop, some Android)
             if (typeof remoteVideoElement.setSinkId === 'function') {
-                // Note: This requires HTTPS and user permission
-                console.log(`[WebRTC] 🔊 Audio output: ${this.usingSpeaker ? 'Speaker' : 'Earpiece'}`);
+                try {
+                    // Get available audio output devices
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+                    
+                    console.log('[WebRTC] 🔊 Available audio outputs:', audioOutputs.map(d => `${d.label} (${d.deviceId})`));
+                    
+                    if (audioOutputs.length > 1) {
+                        // Try to find earpiece (usually labeled with 'earpiece', 'handset', or 'receiver')
+                        const earpieceDevice = audioOutputs.find(d => 
+                            d.label.toLowerCase().includes('earpiece') ||
+                            d.label.toLowerCase().includes('handset') ||
+                            d.label.toLowerCase().includes('receiver') ||
+                            d.label.toLowerCase().includes('phone')
+                        );
+                        
+                        // Find speaker device
+                        const speakerDevice = audioOutputs.find(d => 
+                            d.label.toLowerCase().includes('speaker') ||
+                            d.deviceId === 'default'
+                        );
+                        
+                        if (this.usingSpeaker && speakerDevice) {
+                            await remoteVideoElement.setSinkId(speakerDevice.deviceId);
+                            console.log(`[WebRTC] 🔊 Switched to Speaker: ${speakerDevice.label}`);
+                        } else if (!this.usingSpeaker && earpieceDevice) {
+                            await remoteVideoElement.setSinkId(earpieceDevice.deviceId);
+                            console.log(`[WebRTC] 🔊 Switched to Earpiece: ${earpieceDevice.label}`);
+                        } else {
+                            // Fallback: toggle between default and first non-default
+                            const targetDevice = this.usingSpeaker ? 'default' : (audioOutputs[1]?.deviceId || 'default');
+                            await remoteVideoElement.setSinkId(targetDevice);
+                            console.log(`[WebRTC] 🔊 Switched to: ${targetDevice}`);
+                        }
+                    } else {
+                        console.log('[WebRTC] ⚠️ Only one audio output device available');
+                    }
+                } catch (sinkError) {
+                    console.warn('[WebRTC] ⚠️ setSinkId failed:', sinkError.message);
+                }
+            } else {
+                console.log('[WebRTC] ⚠️ setSinkId not supported on this browser/device');
             }
-
+            
+            // Method 2: For iOS Safari and other browsers without setSinkId
+            // We can only inform the user that this feature is not available
+            // The OS handles audio routing based on proximity sensor and connected devices
+            
+            console.log(`[WebRTC] 🔊 Audio output state: ${this.usingSpeaker ? 'Speaker' : 'Earpiece'}`);
             return this.usingSpeaker;
+            
         } catch (error) {
             console.error('[WebRTC] ❌ Failed to toggle audio output:', error.message);
+            // Revert state on error
+            this.usingSpeaker = !this.usingSpeaker;
             return this.usingSpeaker;
         }
     }

@@ -45,7 +45,6 @@
         switchCameraBtn: document.getElementById('switchCameraBtn'),
         hidePipBtn: document.getElementById('hidePipBtn'),
         endCallBtn: document.getElementById('endCallBtn'),
-        audioOutputBtn: document.getElementById('audioOutputBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
         statsBtn: document.getElementById('statsBtn'),
         blankRemoteBtn: document.getElementById('blankRemoteBtn'),
@@ -592,20 +591,6 @@
         } else {
             showToast('Gagal mengubah kamera', 'error');
         }
-    };
-
-    window.toggleAudioOutput = function() {
-        if (!webrtc) return;
-        
-        const usingSpeaker = webrtc.toggleAudioOutput(elements.remoteVideo);
-        
-        if (usingSpeaker) {
-            elements.audioOutputBtn.classList.remove('active');
-        } else {
-            elements.audioOutputBtn.classList.add('active');
-        }
-
-        showToast(usingSpeaker ? 'Speaker' : 'Earpiece', 'info');
     };
 
     window.toggleFullscreen = function() {
