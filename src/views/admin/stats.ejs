@@ -287,8 +287,8 @@
                                         <tr>
                                             <td><code><%= call.roomId %></code></td>
                                             <td>
-                                                <% if (call.user) { %>
-                                                    <%= call.user.username %>
+                                                <% if (call.userId) { %>
+                                                    <%= call.userId.displayName || call.userId.username %>
                                                 <% } else { %>
                                                     -
                                                 <% } %>

@@ -396,7 +396,7 @@ router.get('/admin/stats', isAuthenticated, isAdmin, async (req, res) => {
 
         // Get recent calls
         const recentCalls = await Stats.find({ type: 'call' })
-            .populate('user', 'username displayName')
+            .populate('userId', 'username displayName')
             .sort({ createdAt: -1 })
             .limit(20);
 

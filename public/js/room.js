@@ -81,10 +81,9 @@
             // Make PIP draggable
             makePIPDraggable();
 
-            // Start stats collection if admin
-            if (ROOM_DATA.isAdmin) {
-                startStatsCollection();
-            }
+            // Start stats collection for all users (latency & packet loss display)
+            // Admin gets full stats panel, non-admin gets mini stats only
+            startStatsCollection();
 
             console.log('[Room] ✅ Room initialized successfully');
         } catch (error) {
@@ -842,7 +841,7 @@
     }
 
     // ==========================================================================
-    // STATS COLLECTION (Admin)
+    // STATS COLLECTION (All Users)
     // ==========================================================================
 
     function startStatsCollection() {
@@ -855,14 +854,19 @@
             try {
                 const stats = await getWebRTCStats();
                 if (stats) {
-                    updateStatsDisplay(stats);
+                    // Update mini stats for all users (latency & packet loss)
                     updateMiniStats(stats);
                     
-                    // Send stats to server
-                    socket.emit('webrtc-stats', {
-                        roomId: ROOM_DATA.roomId,
-                        stats: stats
-                    });
+                    // Admin gets full stats panel and sends to server
+                    if (ROOM_DATA.isAdmin) {
+                        updateStatsDisplay(stats);
+                        
+                        // Send stats to server
+                        socket.emit('webrtc-stats', {
+                            roomId: ROOM_DATA.roomId,
+                            stats: stats
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('[Room] ❌ Stats collection error:', error);
