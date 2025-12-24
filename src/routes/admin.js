@@ -394,11 +394,22 @@ router.get('/admin/stats', isAuthenticated, isAdmin, async (req, res) => {
             }
         ]);
 
-        // Get recent calls
-        const recentCalls = await Stats.find({ type: 'call' })
-            .populate('userId', 'username displayName')
-            .sort({ createdAt: -1 })
-            .limit(20);
+        // Get recent calls - handle potential null userId gracefully
+        let recentCalls = [];
+        try {
+            recentCalls = await Stats.find({ type: 'call' })
+                .populate('userId', 'username displayName')
+                .sort({ createdAt: -1 })
+                .limit(20)
+                .lean();
+        } catch (populateError) {
+            console.error(`[Admin] ⚠️ Populate error: ${populateError.message}`);
+            // Fallback without populate
+            recentCalls = await Stats.find({ type: 'call' })
+                .sort({ createdAt: -1 })
+                .limit(20)
+                .lean();
+        }
 
         res.render('admin/stats', {
             title: 'Statistik',
@@ -419,9 +430,10 @@ router.get('/admin/stats', isAuthenticated, isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error(`[Admin] ❌ Stats page error: ${error.message}`);
+        console.error(`[Admin] ❌ Stack: ${error.stack}`);
         res.render('error', {
             title: 'Error',
-            message: 'Gagal memuat statistik'
+            message: 'Gagal memuat statistik: ' + error.message
         });
     }
 });

@@ -287,8 +287,10 @@
                                         <tr>
                                             <td><code><%= call.roomId %></code></td>
                                             <td>
-                                                <% if (call.userId) { %>
-                                                    <%= call.userId.displayName || call.userId.username %>
+                                                <% if (call.userId && typeof call.userId === 'object') { %>
+                                                    <%= call.userId.displayName || call.userId.username || '-' %>
+                                                <% } else if (call.userId) { %>
+                                                    <%= call.userId %>
                                                 <% } else { %>
                                                     -
                                                 <% } %>

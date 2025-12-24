@@ -30,6 +30,7 @@ class WebRTCHandler {
         this.isScreenSharing = false; // Screen sharing state
         this.screenStream = null; // Screen share stream
         this.originalVideoTrack = null; // Original camera track for restore
+        this.pendingIceCandidates = []; // Queue for ICE candidates that arrive before remote description
 
         // Reconnect config
         this.reconnectAttempts = 0;
@@ -631,6 +632,9 @@ class WebRTCHandler {
 
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             
+            // Process any ICE candidates that arrived before remote description was set
+            await this.processPendingIceCandidates();
+            
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
 
@@ -656,6 +660,9 @@ class WebRTCHandler {
             if (this.peerConnection && this.peerConnection.signalingState !== 'stable') {
                 await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
                 console.log('[WebRTC] ✅ Remote description set');
+                
+                // Process any ICE candidates that arrived before remote description was set
+                await this.processPendingIceCandidates();
             }
         } catch (error) {
             console.error('[WebRTC] ❌ Failed to handle answer:', error.message);
@@ -667,13 +674,40 @@ class WebRTCHandler {
      */
     async handleIceCandidate(candidate) {
         try {
-            if (this.peerConnection && candidate) {
-                await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                console.log('[WebRTC] 🧊 ICE candidate added');
+            if (!candidate) return;
+            
+            // If peer connection doesn't exist or remote description not set yet, queue the candidate
+            if (!this.peerConnection || !this.peerConnection.remoteDescription) {
+                console.log('[WebRTC] 🧳 Queuing ICE candidate (waiting for remote description)');
+                this.pendingIceCandidates.push(candidate);
+                return;
             }
+            
+            await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log('[WebRTC] 🧳 ICE candidate added');
         } catch (error) {
             console.warn('[WebRTC] ⚠️ Failed to add ICE candidate:', error.message);
         }
+    }
+
+    /**
+     * Process queued ICE candidates after remote description is set
+     */
+    async processPendingIceCandidates() {
+        if (this.pendingIceCandidates.length === 0) return;
+        
+        console.log(`[WebRTC] 🧳 Processing ${this.pendingIceCandidates.length} pending ICE candidates`);
+        
+        for (const candidate of this.pendingIceCandidates) {
+            try {
+                await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                console.log('[WebRTC] 🧳 Pending ICE candidate added');
+            } catch (error) {
+                console.warn('[WebRTC] ⚠️ Failed to add pending ICE candidate:', error.message);
+            }
+        }
+        
+        this.pendingIceCandidates = [];
     }
 
     /**
@@ -742,6 +776,9 @@ class WebRTCHandler {
             this.peerConnection = null;
             console.log('[WebRTC] 🔒 Peer connection closed');
         }
+        this.remoteStream = null;
+        this.isConnected = false;
+        this.pendingIceCandidates = []; // Clear pending candidates
     }
 
     /**

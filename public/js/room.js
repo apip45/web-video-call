@@ -81,9 +81,10 @@
             // Make PIP draggable
             makePIPDraggable();
 
-            // Start stats collection for all users (latency & packet loss display)
-            // Admin gets full stats panel, non-admin gets mini stats only
-            startStatsCollection();
+            // Start stats collection if admin
+            if (ROOM_DATA.isAdmin) {
+                startStatsCollection();
+            }
 
             console.log('[Room] ✅ Room initialized successfully');
         } catch (error) {
@@ -285,12 +286,13 @@
             console.log('[Room] 🔄 Closing existing peer connection before creating new one');
             webrtc.closePeerConnection();
         }
+        
+        // Clear pending ICE candidates from previous session
+        webrtc.pendingIceCandidates = [];
 
-        // Determine who should be the offerer to avoid glare condition
-        // Rule: The person who was already in the room (received user-joined) creates the offer
-        // This means WE create the offer since WE received the user-joined event
+        // Create offer to connect with new user
+        // createOffer will create peer connection if needed
         console.log('[Room] 🎯 Creating offer to connect with new user...');
-        webrtc.createPeerConnection();
         webrtc.createOffer(data.socketId);
 
         hideWaitingState();
@@ -841,7 +843,7 @@
     }
 
     // ==========================================================================
-    // STATS COLLECTION (All Users)
+    // STATS COLLECTION (Admin)
     // ==========================================================================
 
     function startStatsCollection() {
@@ -854,19 +856,14 @@
             try {
                 const stats = await getWebRTCStats();
                 if (stats) {
-                    // Update mini stats for all users (latency & packet loss)
+                    updateStatsDisplay(stats);
                     updateMiniStats(stats);
                     
-                    // Admin gets full stats panel and sends to server
-                    if (ROOM_DATA.isAdmin) {
-                        updateStatsDisplay(stats);
-                        
-                        // Send stats to server
-                        socket.emit('webrtc-stats', {
-                            roomId: ROOM_DATA.roomId,
-                            stats: stats
-                        });
-                    }
+                    // Send stats to server
+                    socket.emit('webrtc-stats', {
+                        roomId: ROOM_DATA.roomId,
+                        stats: stats
+                    });
                 }
             } catch (error) {
                 console.error('[Room] ❌ Stats collection error:', error);
