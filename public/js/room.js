@@ -434,29 +434,28 @@
             console.log(`[Room] 👑 Video track found: ${!!videoTrack}`);
             
             if (data.action === 'on') {
-                // Admin forcing camera ON - enable track and show preview
-                console.log('[Room] 👑 Processing action: ON');
+                // Admin forcing track ON - but DON'T change user's self preview
+                // Track is enabled so admin can see, but user preview stays as user set it
+                console.log('[Room] 👑 Processing action: ON (track only)');
                 if (videoTrack) {
                     videoTrack.enabled = true;
                     webrtc.isCameraTrackEnabled = true;
                     console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
                 }
-                webrtc.isCameraHidden = false;
-                elements.localVideo.style.visibility = 'visible';
-                elements.cameraBtn.classList.remove('camera-off');
-                console.log('[Room] 👑 Camera turned ON by admin');
+                // DON'T change isCameraHidden or localVideo visibility
+                // User's self preview stays as they set it
+                console.log('[Room] 👑 Track enabled by admin (preview unchanged)');
             } else if (data.action === 'off') {
-                // Admin forcing camera OFF - disable track and hide preview
-                console.log('[Room] 👑 Processing action: OFF');
+                // Admin forcing track OFF - disable track and keep preview as is
+                console.log('[Room] 👑 Processing action: OFF (track only)');
                 if (videoTrack) {
                     videoTrack.enabled = false;
                     webrtc.isCameraTrackEnabled = false;
                     console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
                 }
-                webrtc.isCameraHidden = true;
-                elements.localVideo.style.visibility = 'hidden';
-                elements.cameraBtn.classList.add('camera-off');
-                console.log('[Room] 👑 Camera turned OFF by admin');
+                // DON'T change isCameraHidden or localVideo visibility
+                // User's self preview stays as they set it
+                console.log('[Room] 👑 Track disabled by admin (preview unchanged)');
             } else {
                 console.log(`[Room] 👑 Unknown action: ${data.action}`);
             }
