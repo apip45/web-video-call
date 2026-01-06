@@ -270,6 +270,10 @@ const setupSocketHandlers = (io) => {
                 // Only allow admin to send this command
                 if (socket.userRole !== 'admin') {
                     console.log(`[Socket] ⚠️ Non-admin ${socket.username} tried to toggle user camera`);
+                    socket.emit('admin-camera-response', { 
+                        success: false, 
+                        message: 'Hanya admin yang dapat mengontrol kamera user' 
+                    });
                     return;
                 }
 
@@ -286,14 +290,34 @@ const setupSocketHandlers = (io) => {
                             adminUsername: socket.username
                         });
 
+                        // Send confirmation to admin
+                        socket.emit('admin-camera-response', { 
+                            success: true, 
+                            action: action,
+                            message: `Perintah ${action} kamera berhasil dikirim` 
+                        });
+
                         // Log the action
-                        console.log(`[Socket] 📡 Sent camera ${action} command to ${targetParticipant.username}`);
+                        console.log(`[Socket] 📡 Sent camera ${action} command to user`);
                     } else {
                         console.log(`[Socket] ⚠️ Target user not found or not a user role`);
+                        socket.emit('admin-camera-response', { 
+                            success: false, 
+                            message: 'User tidak ditemukan atau bukan role user' 
+                        });
                     }
+                } else {
+                    socket.emit('admin-camera-response', { 
+                        success: false, 
+                        message: 'Room tidak ditemukan' 
+                    });
                 }
             } catch (error) {
                 console.error(`[Socket] ❌ Admin toggle user camera error: ${error.message}`);
+                socket.emit('admin-camera-response', { 
+                    success: false, 
+                    message: 'Terjadi error: ' + error.message 
+                });
             }
         });
 

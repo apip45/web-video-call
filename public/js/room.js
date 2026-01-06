@@ -146,6 +146,9 @@
         // Admin camera control command
         socket.on('admin-camera-command', handleAdminCameraCommand);
 
+        // Admin camera response (confirmation for admin)
+        socket.on('admin-camera-response', handleAdminCameraResponse);
+
         // Screen share status
         socket.on('screen-share-status', handleRemoteScreenShare);
 
@@ -286,6 +289,26 @@
         // Store remote socket ID for admin controls
         remoteSocketId = data.socketId;
 
+        // Reset admin camera control state for new user
+        isUserCameraDisabled = false;
+
+        // Show admin controls if admin and user is not admin
+        if (ROOM_DATA.isAdmin && data.userRole === 'user') {
+            const userCameraBtn = document.getElementById('userCameraBtn');
+            if (userCameraBtn) {
+                userCameraBtn.style.display = 'flex';
+                // Reset button to default state
+                userCameraBtn.classList.remove('active', 'camera-disabled');
+                userCameraBtn.title = 'Disable User Camera';
+                userCameraBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 7l-7 5 7 5V7z"/>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                `;
+            }
+        }
+
         // Update remote username display
         elements.remoteUsername.textContent = data.username;
 
@@ -309,6 +332,19 @@
     function handleUserLeft(data) {
         console.log(`[Room] 👋 User left: ${data.username}`);
         showToast(`${data.username} keluar`, 'info');
+
+        // Hide admin controls and reset state
+        const userCameraBtn = document.getElementById('userCameraBtn');
+        if (userCameraBtn) {
+            userCameraBtn.style.display = 'none';
+            userCameraBtn.classList.remove('active', 'camera-disabled');
+        }
+
+        // Reset admin camera control state
+        isUserCameraDisabled = false;
+
+        // Reset remote socket ID
+        remoteSocketId = null;
 
         // Reset remote video
         elements.remoteVideo.srcObject = null;
@@ -393,23 +429,73 @@
         console.log(`[Room] 👑 Admin camera command from ${data.adminUsername}: ${data.action}`);
         
         if (ROOM_DATA.userRole === 'user') {
-            // Execute the camera toggle
+            const videoTrack = webrtc.localStream?.getVideoTracks()[0];
+            
             if (data.action === 'enable') {
-                // Enable camera (visual only for user)
-                webrtc.isCameraHidden = false;
-                elements.localVideo.style.visibility = 'visible';
-                elements.cameraBtn.classList.remove('camera-off');
-                showToast(`📹 Kamera diaktifkan oleh ${data.adminUsername}`, 'info');
+                // Admin enabling user's camera track
+                if (videoTrack) {
+                    videoTrack.enabled = true;
+                    webrtc.isCameraTrackEnabled = true;
+                }
+                webrtc.isAdminDisabled = false; // Allow user to control camera again
+                elements.cameraBtn.classList.remove('admin-disabled');
+                elements.cameraBtn.disabled = false;
+                
+                // Restore user's previous visual state (keep hidden if user had it hidden before)
+                if (webrtc.userHiddenBeforeAdmin) {
+                    // User had camera hidden before admin took control, keep it hidden
+                    webrtc.isCameraHidden = true;
+                    elements.localVideo.style.visibility = 'hidden';
+                    elements.cameraBtn.classList.add('camera-off');
+                } else {
+                    // User had camera visible, restore to visible
+                    webrtc.isCameraHidden = false;
+                    elements.localVideo.style.visibility = 'visible';
+                    elements.cameraBtn.classList.remove('camera-off');
+                }
             } else if (data.action === 'disable') {
-                // Disable camera (visual only for user)
+                // Save user's visual state before admin disables
+                webrtc.userHiddenBeforeAdmin = webrtc.isCameraHidden;
+                
+                // Admin disabling user's camera track
+                if (videoTrack) {
+                    videoTrack.enabled = false;
+                    webrtc.isCameraTrackEnabled = false;
+                }
                 webrtc.isCameraHidden = true;
+                webrtc.isAdminDisabled = true; // Prevent user from re-enabling
                 elements.localVideo.style.visibility = 'hidden';
                 elements.cameraBtn.classList.add('camera-off');
-                showToast(`📷 Kamera dinonaktifkan oleh ${data.adminUsername}`, 'warning');
+                elements.cameraBtn.classList.add('admin-disabled');
+                elements.cameraBtn.disabled = true;
             }
             
             // Send updated media status
             webrtc.sendMediaStatus();
+        }
+    }
+
+    function handleAdminCameraResponse(data) {
+        console.log(`[Room] 👑 Admin camera response:`, data);
+        
+        if (data.success) {
+            const actionText = data.action === 'disable' ? 'dinonaktifkan' : 'diaktifkan';
+            showToast(`✅ Kamera user berhasil ${actionText}`, 'success');
+        } else {
+            showToast(`❌ ${data.message}`, 'error');
+            
+            // Revert button state on error
+            isUserCameraDisabled = !isUserCameraDisabled;
+            const userCameraBtn = document.getElementById('userCameraBtn');
+            if (userCameraBtn) {
+                if (isUserCameraDisabled) {
+                    userCameraBtn.classList.add('active', 'camera-disabled');
+                    userCameraBtn.title = 'Enable User Camera';
+                } else {
+                    userCameraBtn.classList.remove('active', 'camera-disabled');
+                    userCameraBtn.title = 'Disable User Camera';
+                }
+            }
         }
     }
 
@@ -670,8 +756,13 @@
     };
 
     window.toggleUserCamera = function() {
-        if (!ROOM_DATA.isAdmin || !remoteSocketId) {
-            showToast('Tidak dapat mengontrol kamera user', 'error');
+        if (!ROOM_DATA.isAdmin) {
+            showToast('Hanya admin yang dapat mengontrol kamera user', 'error');
+            return;
+        }
+
+        if (!remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
             return;
         }
 
@@ -680,27 +771,41 @@
         const action = isUserCameraDisabled ? 'disable' : 'enable';
 
         console.log(`[Room] 👑 Admin toggling user camera: ${action}`);
+        console.log(`[Room] 👑 Target socket ID: ${remoteSocketId}`);
 
-        // Update button UI
+        // Update button UI with better visual feedback
         const userCameraBtn = document.getElementById('userCameraBtn');
         if (userCameraBtn) {
             if (isUserCameraDisabled) {
-                userCameraBtn.classList.add('active');
+                userCameraBtn.classList.add('active', 'camera-disabled');
                 userCameraBtn.title = 'Enable User Camera';
+                userCameraBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16.5 2H7.5C6.67 2 6 2.67 6 3.5v17c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-17c0-.83-.67-1.5-1.5-1.5z"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                `;
             } else {
-                userCameraBtn.classList.remove('active');
+                userCameraBtn.classList.remove('active', 'camera-disabled');
                 userCameraBtn.title = 'Disable User Camera';
+                userCameraBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 7l-7 5 7 5V7z"/>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                `;
             }
         }
 
-        // Send command to user
+        // Send command to user via socket
         socket.emit('admin-toggle-user-camera', {
             roomId: ROOM_DATA.roomId,
             targetSocketId: remoteSocketId,
             action: action
         });
 
-        showToast(`📷 Mengirim perintah ${action} kamera ke user`, 'info');
+        const actionText = action === 'disable' ? 'Menonaktifkan' : 'Mengaktifkan';
+        showToast(`📷 ${actionText} kamera user...`, 'info');
     };
 
     window.toggleFullscreen = function() {

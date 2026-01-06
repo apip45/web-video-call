@@ -23,6 +23,8 @@ class WebRTCHandler {
         this.isMuted = false;
         this.isCameraTrackEnabled = true; // Actual track enabled state
         this.isCameraHidden = false; // Visual state (for non-admin preview)
+        this.isAdminDisabled = false; // Track if admin has disabled user's camera
+        this.userHiddenBeforeAdmin = false; // User's visual state before admin control
         this.usingSpeaker = true;
         this.currentCameraFacing = 'user'; // 'user' = front, 'environment' = back
         this.userRole = null; // Will be set by room.js
@@ -283,6 +285,7 @@ class WebRTCHandler {
      * Toggle camera on/off
      * For admin: toggle actual track enabled state
      * For non-admin (user): only toggle visual (track always stays enabled)
+     * User cannot toggle if admin has disabled their camera
      */
     async toggleCamera() {
         if (!this.localStream) return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled };
@@ -311,7 +314,13 @@ class WebRTCHandler {
                     }
                 }
             } else {
-                // Non-admin (user): only toggle visual, track stays always enabled
+                // Non-admin (user): check if admin has disabled camera
+                if (this.isAdminDisabled) {
+                    console.log('[WebRTC] 📹 User Camera: BLOCKED - Admin has disabled camera');
+                    return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled, blocked: true };
+                }
+                
+                // Only toggle visual, track stays always enabled
                 this.isCameraHidden = !this.isCameraHidden;
                 videoTrack.enabled = true; // Always keep enabled for admin to see
                 

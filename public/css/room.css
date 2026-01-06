@@ -473,6 +473,19 @@
     display: block;
 }
 
+/* Admin disabled camera state (user's camera button when admin disabled it) */
+.control-btn.admin-disabled {
+    background: rgba(107, 114, 128, 0.8);
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Admin control button active state (camera disabled icon) */
+.control-btn.camera-disabled {
+    background: rgba(239, 68, 68, 0.8);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+}
+
 /* Screen share active state */
 .control-btn.active {
     background: var(--color-primary);
