@@ -286,15 +286,16 @@ const setupSocketHandlers = (io) => {
                     if (targetParticipant && targetParticipant.role === 'user') {
                         // Send command to target user
                         socket.to(targetSocketId).emit('admin-camera-command', {
-                            action: action, // 'enable' or 'disable'
+                            action: action, // 'on' or 'off'
                             adminUsername: socket.username
                         });
 
                         // Send confirmation to admin
+                        const actionText = action === 'on' ? 'diaktifkan' : 'dinonaktifkan';
                         socket.emit('admin-camera-response', { 
                             success: true, 
                             action: action,
-                            message: `Perintah ${action} kamera berhasil dikirim` 
+                            message: `Kamera user berhasil ${actionText}` 
                         });
 
                         // Log the action

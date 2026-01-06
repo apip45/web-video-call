@@ -298,14 +298,8 @@
             if (userCameraBtn) {
                 userCameraBtn.style.display = 'flex';
                 // Reset button to default state
-                userCameraBtn.classList.remove('active', 'camera-disabled');
-                userCameraBtn.title = 'Disable User Camera';
-                userCameraBtn.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M23 7l-7 5 7 5V7z"/>
-                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                    </svg>
-                `;
+                userCameraBtn.classList.remove('active');
+                userCameraBtn.title = 'Nonaktifkan kamera user';
             }
         }
 
@@ -379,6 +373,12 @@
     function handleRemoteMediaStatus(data) {
         console.log(`[Room] 📡 Remote media status from ${data.username} (${data.userRole}): muted=${data.isMuted}, cameraHidden=${data.isCameraHidden}, trackEnabled=${data.isCameraTrackEnabled}`);
         
+        // Store remote socket ID if available
+        if (data.socketId && ROOM_DATA.isAdmin && data.userRole === 'user') {
+            remoteSocketId = data.socketId;
+            console.log(`[Room] 📡 Updated remoteSocketId from media status: ${remoteSocketId}`);
+        }
+        
         // Update mute indicator
         if (data.isMuted) {
             elements.remoteMuteIndicator.classList.remove('hidden');
@@ -412,25 +412,6 @@
             } else {
                 elements.remoteCameraIndicator.classList.add('hidden');
             }
-            
-            // Admin: Update userCameraBtn state based on user's camera visibility
-            // If user has camera visible (not hidden), disable the toggle button for admin
-            if (ROOM_DATA.isAdmin) {
-                const userCameraBtn = document.getElementById('userCameraBtn');
-                if (userCameraBtn) {
-                    if (!data.isCameraHidden) {
-                        // User camera is ON/visible - disable admin toggle (nothing to force)
-                        userCameraBtn.disabled = true;
-                        userCameraBtn.classList.add('btn-disabled');
-                        userCameraBtn.title = 'User kamera sudah aktif';
-                    } else {
-                        // User camera is hidden - enable admin toggle to force ON
-                        userCameraBtn.disabled = false;
-                        userCameraBtn.classList.remove('btn-disabled');
-                        userCameraBtn.title = 'Aktifkan kamera user';
-                    }
-                }
-            }
         }
     }
 
@@ -445,58 +426,46 @@
     }
 
     function handleAdminCameraCommand(data) {
-        console.log(`[Room] 👑 Admin camera command from ${data.adminUsername}: ${data.action}`);
+        console.log(`[Room] 👑 Admin camera command received:`, data);
+        console.log(`[Room] 👑 Current userRole: ${ROOM_DATA.userRole}`);
         
         if (ROOM_DATA.userRole === 'user') {
             const videoTrack = webrtc.localStream?.getVideoTracks()[0];
+            console.log(`[Room] 👑 Video track found: ${!!videoTrack}`);
             
-            if (data.action === 'enable') {
-                // Admin enabling user's camera track - this shouldn't happen normally
-                // since user track is always on, but handle it anyway
+            if (data.action === 'on') {
+                // Admin forcing camera ON - enable track and show preview
+                console.log('[Room] 👑 Processing action: ON');
                 if (videoTrack) {
                     videoTrack.enabled = true;
                     webrtc.isCameraTrackEnabled = true;
+                    console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
                 }
-                webrtc.isAdminDisabled = false;
-                elements.cameraBtn.classList.remove('admin-disabled');
-                elements.cameraBtn.disabled = false;
-                
-                // Restore user's previous visual state
-                if (webrtc.userHiddenBeforeAdmin) {
-                    webrtc.isCameraHidden = true;
-                    elements.localVideo.style.visibility = 'hidden';
-                    elements.cameraBtn.classList.add('camera-off');
-                } else {
-                    webrtc.isCameraHidden = false;
-                    elements.localVideo.style.visibility = 'visible';
-                    elements.cameraBtn.classList.remove('camera-off');
-                }
-            } else if (data.action === 'disable') {
-                // Admin "disabling" user's camera - for user this means:
-                // 1. Show their camera as ON (force visible) - opposite of what they see
-                // 2. Track stays enabled (admin can always see)
-                // 3. User toggle works but camera stays on (visual toggle only)
-                
-                // Save user's current visual state
-                webrtc.userHiddenBeforeAdmin = webrtc.isCameraHidden;
-                
-                // Force camera to appear ON for user (but they can't really turn it off)
                 webrtc.isCameraHidden = false;
-                webrtc.isAdminDisabled = true; // Mark that admin has taken control
                 elements.localVideo.style.visibility = 'visible';
                 elements.cameraBtn.classList.remove('camera-off');
-                // Don't disable button - let user toggle, but it won't affect track
-                elements.cameraBtn.classList.add('admin-controlled');
-                
-                // Track stays enabled always
+                console.log('[Room] 👑 Camera turned ON by admin');
+            } else if (data.action === 'off') {
+                // Admin forcing camera OFF - disable track and hide preview
+                console.log('[Room] 👑 Processing action: OFF');
                 if (videoTrack) {
-                    videoTrack.enabled = true;
-                    webrtc.isCameraTrackEnabled = true;
+                    videoTrack.enabled = false;
+                    webrtc.isCameraTrackEnabled = false;
+                    console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
                 }
+                webrtc.isCameraHidden = true;
+                elements.localVideo.style.visibility = 'hidden';
+                elements.cameraBtn.classList.add('camera-off');
+                console.log('[Room] 👑 Camera turned OFF by admin');
+            } else {
+                console.log(`[Room] 👑 Unknown action: ${data.action}`);
             }
             
             // Send updated media status
             webrtc.sendMediaStatus();
+            console.log('[Room] 👑 Media status sent');
+        } else {
+            console.log(`[Room] 👑 Ignoring command - not a user role`);
         }
     }
 
@@ -504,16 +473,10 @@
         console.log(`[Room] 👑 Admin camera response:`, data);
         
         if (data.success) {
-            showToast(`✅ Kamera user dipaksa aktif`, 'success');
+            const actionText = data.action === 'on' ? 'diaktifkan' : 'dinonaktifkan';
+            showToast(`✅ Kamera user ${actionText}`, 'success');
         } else {
             showToast(`❌ ${data.message}`, 'error');
-            
-            // Revert button state on error
-            const userCameraBtn = document.getElementById('userCameraBtn');
-            if (userCameraBtn) {
-                userCameraBtn.classList.remove('active', 'camera-forced');
-                userCameraBtn.disabled = false;
-            }
         }
     }
 
@@ -780,22 +743,28 @@
         }
 
         if (!remoteSocketId) {
+            console.log('[Room] ⚠️ No remoteSocketId, checking for connected users...');
             showToast('Belum ada user yang terhubung', 'warning');
             return;
         }
 
-        // This is now a "force ON" button - only used when user has hidden camera
-        // When user camera is already visible, this button is disabled
-        const action = 'disable'; // 'disable' here means "force user camera to stay ON"
+        // Toggle state
+        isUserCameraDisabled = !isUserCameraDisabled;
+        const action = isUserCameraDisabled ? 'off' : 'on';
 
-        console.log(`[Room] 👑 Admin forcing user camera ON`);
+        console.log(`[Room] 👑 Admin toggling user camera: ${action}`);
         console.log(`[Room] 👑 Target socket ID: ${remoteSocketId}`);
 
-        // Update button UI - show as active/pressed
+        // Update button UI
         const userCameraBtn = document.getElementById('userCameraBtn');
         if (userCameraBtn) {
-            userCameraBtn.classList.add('active', 'camera-forced');
-            userCameraBtn.title = 'Kamera user dipaksa aktif';
+            if (isUserCameraDisabled) {
+                userCameraBtn.classList.add('active');
+                userCameraBtn.title = 'Aktifkan kamera user';
+            } else {
+                userCameraBtn.classList.remove('active');
+                userCameraBtn.title = 'Nonaktifkan kamera user';
+            }
         }
 
         // Send command to user via socket
@@ -805,7 +774,7 @@
             action: action
         });
 
-        const actionText = action === 'disable' ? 'Menonaktifkan' : 'Mengaktifkan';
+        const actionText = action === 'on' ? 'Mengaktifkan' : 'Menonaktifkan';
         showToast(`📷 ${actionText} kamera user...`, 'info');
     };
 
