@@ -480,10 +480,23 @@
     cursor: not-allowed;
 }
 
-/* Admin control button active state (camera disabled icon) */
-.control-btn.camera-disabled {
-    background: rgba(239, 68, 68, 0.8);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+/* Admin controlled state (camera forced on by admin) */
+.control-btn.admin-controlled {
+    background: rgba(245, 158, 11, 0.8);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+/* Button disabled state for admin toggle */
+.control-btn.btn-disabled {
+    background: rgba(107, 114, 128, 0.5);
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Admin control button forced state */
+.control-btn.camera-forced {
+    background: rgba(16, 185, 129, 0.8);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
 }
 
 /* Screen share active state */
