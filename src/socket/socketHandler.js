@@ -261,8 +261,44 @@ const setupSocketHandlers = (io) => {
         });
 
         // =========================================================================
-        // SCREEN SHARE STATUS
+        // ADMIN TOGGLE USER CAMERA
         // =========================================================================
+        socket.on('admin-toggle-user-camera', async (data) => {
+            try {
+                const { roomId, targetSocketId, action } = data; // action: 'enable' or 'disable'
+                
+                // Only allow admin to send this command
+                if (socket.userRole !== 'admin') {
+                    console.log(`[Socket] ⚠️ Non-admin ${socket.username} tried to toggle user camera`);
+                    return;
+                }
+
+                console.log(`[Socket] 👑 Admin ${socket.username} toggling camera for user ${targetSocketId}: ${action}`);
+
+                // Find the target user in the room
+                const room = await Room.findOne({ roomId: roomId });
+                if (room) {
+                    const targetParticipant = room.participants.find(p => p.socketId === targetSocketId);
+                    if (targetParticipant && targetParticipant.role === 'user') {
+                        // Send command to target user
+                        socket.to(targetSocketId).emit('admin-camera-command', {
+                            action: action, // 'enable' or 'disable'
+                            adminUsername: socket.username
+                        });
+
+                        // Log the action
+                        console.log(`[Socket] 📡 Sent camera ${action} command to ${targetParticipant.username}`);
+                    } else {
+                        console.log(`[Socket] ⚠️ Target user not found or not a user role`);
+                    }
+                }
+            } catch (error) {
+                console.error(`[Socket] ❌ Admin toggle user camera error: ${error.message}`);
+            }
+        });
+
+        // =========================================================================
+        // SCREEN SHARE STATUS
         socket.on('screen-share-status', async (data) => {
             try {
                 const { roomId, isScreenSharing } = data;
