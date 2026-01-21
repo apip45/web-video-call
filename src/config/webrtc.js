@@ -3,14 +3,80 @@
  * WEBRTC CONFIGURATION
  * =============================================================================
  * Konfigurasi ICE servers (STUN & TURN) untuk WebRTC
- * TURN server wajib untuk koneksi melewati NAT/firewall
+ * Support dual mode: Mesh P2P dan SFU (Ion-SFU)
+ * TURN server wajib untuk koneksi melewati NAT/firewall (mode mesh)
  */
 
 /**
- * Generate ICE servers configuration
+ * Get WebRTC mode from environment
+ * @returns {string} 'mesh' or 'sfu'
+ */
+const getWebRTCMode = () => {
+    const mode = process.env.WEBRTC_MODE || 'mesh';
+    return mode.toLowerCase();
+};
+
+/**
+ * Check if Ion-SFU is enabled
+ * @returns {boolean}
+ */
+const isIonSFUEnabled = () => {
+    return process.env.ION_SFU_ENABLED === 'true' && getWebRTCMode() === 'sfu';
+};
+
+/**
+ * Get Ion-SFU configuration
+ * @returns {Object} Ion-SFU config
+ */
+const getIonSFUConfig = () => {
+    return {
+        enabled: isIonSFUEnabled(),
+        serverUrl: process.env.ION_SFU_SERVER_URL || 'wss://sfu.mikan.my.id/ws',
+        serverIp: process.env.SFU_SERVER_IP || '202.155.91.241',
+        fallbackToMesh: process.env.WEBRTC_FALLBACK_TO_MESH === 'true'
+    };
+};
+
+/**
+ * Generate ICE servers configuration for SFU mode
+ * SFU mode uses Ion-SFU's STUN/TURN servers configured in sfu.toml
+ * Client only needs to connect to SFU server
  * @returns {Array} Array of ICE server configurations
  */
-const getIceServers = () => {
+const getIceServersForSFU = () => {
+    const iceServers = [];
+    const sfuConfig = getIonSFUConfig();
+
+    // SFU server's public IP as STUN (configured in Ion-SFU sfu.toml)
+    if (sfuConfig.serverIp) {
+        iceServers.push({
+            urls: `stun:${sfuConfig.serverIp}:3478`
+        });
+    }
+
+    // STUN dari Coturn (backup, sudah configured di Ion-SFU sfu.toml)
+    if (process.env.STUN_SERVER_URL) {
+        iceServers.push({
+            urls: process.env.STUN_SERVER_URL
+        });
+    }
+
+    // Google STUN fallback
+    iceServers.push({
+        urls: 'stun:stun.l.google.com:19302'
+    });
+
+    console.log(`[WebRTC] 🎯 SFU Mode - ICE Servers: ${iceServers.length}`);
+    console.log(`[WebRTC] 🌐 Ion-SFU Server: ${sfuConfig.serverUrl}`);
+    
+    return iceServers;
+};
+
+/**
+ * Generate ICE servers configuration for Mesh P2P mode
+ * @returns {Array} Array of ICE server configurations
+ */
+const getIceServersForMesh = () => {
     const iceServers = [];
 
     // STUN Server (free, untuk simple NAT traversal)
@@ -85,8 +151,24 @@ const getIceServers = () => {
         console.log(`[WebRTC] ✅ TURNS (TLS) server configured`);
     }
 
-    console.log(`[WebRTC] 🌐 Total ICE Servers: ${iceServers.length} servers`);
+    console.log(`[WebRTC] 🌐 Mesh Mode - Total ICE Servers: ${iceServers.length} servers`);
     return iceServers;
+};
+
+/**
+ * Generate ICE servers configuration based on mode
+ * @returns {Array} Array of ICE server configurations
+ */
+const getIceServers = () => {
+    const mode = getWebRTCMode();
+    
+    if (mode === 'sfu' && isIonSFUEnabled()) {
+        console.log(`[WebRTC] 🎯 Mode: SFU (Ion-SFU)`);
+        return getIceServersForSFU();
+    } else {
+        console.log(`[WebRTC] 🔗 Mode: Mesh P2P`);
+        return getIceServersForMesh();
+    }
 };
 
 /**
@@ -105,5 +187,8 @@ const rtcConfig = {
 
 module.exports = {
     getIceServers,
+    getWebRTCMode,
+    isIonSFUEnabled,
+    getIonSFUConfig,
     rtcConfig
 };

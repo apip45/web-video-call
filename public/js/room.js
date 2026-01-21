@@ -169,6 +169,7 @@
 
     async function initWebRTC() {
         console.log('[Room] 📹 Initializing WebRTC...');
+        console.log(`[Room] 🎯 Mode: ${ROOM_DATA.webrtcMode || 'mesh'}`);
 
         webrtc = new WebRTCHandler({
             roomId: ROOM_DATA.roomId,
@@ -176,6 +177,8 @@
             username: ROOM_DATA.username,
             iceServers: ROOM_DATA.iceServers,
             socket: socket,
+            mode: ROOM_DATA.webrtcMode || 'mesh',  // 'mesh' or 'sfu'
+            ionSFUConfig: ROOM_DATA.ionSFUConfig,  // Ion-SFU config (if SFU mode)
             videoSettings: ROOM_DATA.videoSettings, // Global video settings from server
 
             onRemoteStream: (stream) => {
@@ -247,9 +250,24 @@
         console.log(`[Room] ✅ Joined room: ${data.roomId}`);
         console.log(`[Room] 👥 Participants: ${data.participantCount}`);
         console.log(`[Room] 🎯 Is initiator: ${data.isInitiator}`);
+        console.log(`[Room] 🎯 Mode: ${ROOM_DATA.webrtcMode || 'mesh'}`);
 
         webrtc.isInitiator = data.isInitiator;
 
+        // Handle based on WebRTC mode
+        if (ROOM_DATA.webrtcMode === 'sfu') {
+            // SFU mode: Start session immediately
+            handleRoomJoinedSFU(data);
+        } else {
+            // Mesh mode: Original P2P signaling logic
+            handleRoomJoinedMesh(data);
+        }
+    }
+    
+    /**
+     * Handle room joined in Mesh P2P mode
+     */
+    function handleRoomJoinedMesh(data) {
         if (data.isInitiator) {
             // First user, wait for others
             hideConnectionStatus();
@@ -265,6 +283,37 @@
                 console.log('[Room] 🔄 Closing stale peer connection');
                 webrtc.closePeerConnection();
             }
+        }
+    }
+    
+    /**
+     * Handle room joined in SFU mode
+     */
+    async function handleRoomJoinedSFU(data) {
+        try {
+            hideConnectionStatus();
+            showConnectionStatus('Menghubungkan ke SFU server...');
+            
+            console.log('[Room] 🚀 Starting SFU session...');
+            
+            // Start SFU session (connect, join, publish)
+            await webrtc.startSFUSession();
+            
+            hideConnectionStatus();
+            
+            // In SFU mode, we're always connected to server
+            // Remote stream will come via onRemoteTrack callback
+            if (data.participantCount === 1) {
+                showWaitingState();
+            }
+            
+            console.log('[Room] ✅ SFU session started');
+            showToast('Terhubung ke server SFU', 'success');
+            
+        } catch (error) {
+            console.error('[Room] ❌ Failed to start SFU session:', error);
+            showToast('Gagal terhubung ke server SFU: ' + error.message, 'error');
+            hideConnectionStatus();
         }
     }
 

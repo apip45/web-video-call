@@ -295,12 +295,23 @@
             userRole: '<%= userRole || "user" %>',
             isAdmin: <%= isAdmin ? 'true' : 'false' %>,
             iceServers: <%- iceServers %>,
-            videoSettings: <%- videoSettings %>
+            videoSettings: <%- videoSettings %>,
+            webrtcMode: '<%= webrtcMode %>',  // 'mesh' or 'sfu'
+            ionSFUConfig: <%- ionSFUConfig %>
         };
+        
+        console.log('[Room] 🎯 WebRTC Mode:', ROOM_DATA.webrtcMode);
+        if (ROOM_DATA.webrtcMode === 'sfu') {
+            console.log('[Room] 🌐 Ion-SFU Server:', ROOM_DATA.ionSFUConfig.serverUrl);
+        }
     </script>
     
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/theme.js"></script>
+    <!-- Load Ion-SFU client if in SFU mode -->
+    <% if (webrtcMode === 'sfu') { %>
+    <script src="/js/ionSFUClient.js"></script>
+    <% } %>
     <script src="/js/webrtc.js"></script>
     <script src="/js/room.js"></script>
 </body>

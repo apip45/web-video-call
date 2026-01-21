@@ -2,8 +2,10 @@
  * =============================================================================
  * WEBRTC HANDLER
  * =============================================================================
- * WebRTC peer connection dengan auto reconnect
- * Mendukung mobile: switch camera, audio output
+ * WebRTC connection handler dengan dual mode support:
+ * - Mesh P2P: Direct peer-to-peer connection
+ * - SFU: Selective Forwarding Unit via Ion-SFU
+ * Mendukung mobile: switch camera, audio output, auto reconnect
  */
 
 class WebRTCHandler {
@@ -13,9 +15,14 @@ class WebRTCHandler {
         this.username = options.username;
         this.iceServers = options.iceServers || [];
         this.socket = options.socket;
+        
+        // WebRTC Mode: 'mesh' or 'sfu'
+        this.mode = options.mode || 'mesh';
+        this.ionSFUConfig = options.ionSFUConfig || null;
+        this.ionSFUClient = null; // Ion-SFU client instance (SFU mode only)
 
         // State
-        this.peerConnection = null;
+        this.peerConnection = null; // For mesh mode
         this.localStream = null;
         this.remoteStream = null;
         this.isInitiator = false;
@@ -49,7 +56,12 @@ class WebRTCHandler {
         this.onError = options.onError || (() => {});
 
         console.log('[WebRTC] 🔧 Handler initialized');
+        console.log(`[WebRTC] 🎯 Mode: ${this.mode.toUpperCase()}`);
         console.log(`[WebRTC] 🌐 ICE servers: ${this.iceServers.length}`);
+        
+        if (this.mode === 'sfu') {
+            console.log(`[WebRTC] 🌐 Ion-SFU Server: ${this.ionSFUConfig?.serverUrl}`);
+        }
         
         // Video settings from server (global settings)
         this.videoSettings = options.videoSettings || {
@@ -772,6 +784,103 @@ class WebRTCHandler {
 
     /**
      * =========================================================================
+     * ION-SFU MODE (SFU)
+     * =========================================================================
+     */
+
+    /**
+     * Initialize Ion-SFU client
+     */
+    initIonSFUClient() {
+        if (!this.ionSFUConfig || !this.ionSFUConfig.enabled) {
+            console.error('[WebRTC] ❌ Ion-SFU config not available');
+            return;
+        }
+
+        console.log('[WebRTC] 🎯 Initializing Ion-SFU client...');
+
+        this.ionSFUClient = new IonSFUClient({
+            serverUrl: this.ionSFUConfig.serverUrl,
+            roomId: this.roomId,
+            userId: this.userId,
+            username: this.username,
+            iceServers: this.iceServers,
+            onConnected: () => {
+                console.log('[WebRTC] ✅ Ion-SFU connected');
+                this.isConnected = true;
+                this.onConnectionStateChange('connected');
+            },
+            onDisconnected: () => {
+                console.log('[WebRTC] 🔌 Ion-SFU disconnected');
+                this.isConnected = false;
+                this.onConnectionStateChange('disconnected');
+            },
+            onRemoteTrack: (stream, track) => {
+                console.log(`[WebRTC] 📥 Ion-SFU remote track: ${track.kind}`);
+                this.remoteStream = stream;
+                this.onRemoteStream(stream);
+                this.isConnected = true;
+                this.onConnectionStateChange('connected');
+            },
+            onError: (error) => {
+                console.error('[WebRTC] ❌ Ion-SFU error:', error);
+                this.onError(error);
+            }
+        });
+    }
+
+    /**
+     * Start SFU session
+     */
+    async startSFUSession() {
+        try {
+            console.log('[WebRTC] 🚀 Starting SFU session...');
+
+            // Initialize Ion-SFU client if not already
+            if (!this.ionSFUClient) {
+                this.initIonSFUClient();
+            }
+
+            // Connect to Ion-SFU WebSocket server
+            await this.ionSFUClient.connect();
+
+            // Join session
+            await this.ionSFUClient.join();
+
+            // Get local stream if not already
+            if (!this.localStream) {
+                await this.getLocalStream();
+            }
+
+            // Publish local stream to SFU
+            await this.ionSFUClient.publish(this.localStream);
+
+            console.log('[WebRTC] ✅ SFU session started');
+
+        } catch (error) {
+            console.error('[WebRTC] ❌ Failed to start SFU session:', error);
+            this.onError({ type: 'sfu', message: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Stop SFU session
+     */
+    stopSFUSession() {
+        console.log('[WebRTC] 🛑 Stopping SFU session...');
+        
+        if (this.ionSFUClient) {
+            this.ionSFUClient.disconnect();
+            this.ionSFUClient = null;
+        }
+        
+        this.isConnected = false;
+        console.log('[WebRTC] ✅ SFU session stopped');
+    }
+
+    /**
+     * =========================================================================
      * CLEANUP
      * =========================================================================
      */
@@ -808,7 +917,14 @@ class WebRTCHandler {
      */
     cleanup() {
         console.log('[WebRTC] 🧹 Cleaning up...');
-        this.closePeerConnection();
+        
+        // Cleanup based on mode
+        if (this.mode === 'sfu') {
+            this.stopSFUSession();
+        } else {
+            this.closePeerConnection();
+        }
+        
         this.stopLocalStream();
         this.isConnected = false;
         this.reconnectAttempts = 0;

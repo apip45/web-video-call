@@ -10,7 +10,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const Room = require('../models/Room');
 const { isAuthenticated } = require('../middleware/auth');
-const { getIceServers } = require('../config/webrtc');
+const { getIceServers, getWebRTCMode, getIonSFUConfig } = require('../config/webrtc');
 
 /**
  * GET /
@@ -120,6 +120,10 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
 
         // Get ICE servers configuration
         const iceServers = getIceServers();
+        
+        // Get WebRTC mode (mesh or sfu)
+        const webrtcMode = getWebRTCMode();
+        const ionSFUConfig = getIonSFUConfig();
 
         // Get global video settings
         const Settings = require('../models/Settings');
@@ -134,6 +138,8 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
             username: req.session.displayName || req.session.username,
             userRole: req.session.role,
             isAdmin: req.session.role === 'admin',
+            webrtcMode: webrtcMode,
+            ionSFUConfig: JSON.stringify(ionSFUConfig),
             videoSettings: JSON.stringify({
                 ...videoSettings,
                 width: resolutionDimensions.width,
