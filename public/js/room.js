@@ -149,6 +149,9 @@
         // Admin camera response (confirmation for admin)
         socket.on('admin-camera-response', handleAdminCameraResponse);
 
+        // Admin switch camera command
+        socket.on('admin-switch-camera-command', handleAdminSwitchCameraCommand);
+
         // Screen share status
         socket.on('screen-share-status', handleRemoteScreenShare);
 
@@ -350,6 +353,11 @@
                 userCameraBtn.classList.remove('active');
                 userCameraBtn.title = 'Nonaktifkan kamera user';
             }
+            
+            const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
+            if (switchUserCameraBtn) {
+                switchUserCameraBtn.style.display = 'flex';
+            }
         }
 
         // Update remote username display
@@ -381,6 +389,11 @@
         if (userCameraBtn) {
             userCameraBtn.style.display = 'none';
             userCameraBtn.classList.remove('active', 'camera-disabled');
+        }
+        
+        const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
+        if (switchUserCameraBtn) {
+            switchUserCameraBtn.style.display = 'none';
         }
 
         // Reset admin camera control state
@@ -525,6 +538,15 @@
             showToast(`✅ Kamera user ${actionText}`, 'success');
         } else {
             showToast(`❌ ${data.message}`, 'error');
+        }
+    }
+
+    async function handleAdminSwitchCameraCommand(data) {
+        console.log(`[Room] 👑 Admin switch camera command from ${data.adminUsername}`);
+        
+        if (ROOM_DATA.userRole === 'user') {
+            // Execute camera switch silently (no notification to user)
+            await webrtc.switchCamera();
         }
     }
 
@@ -834,6 +856,23 @@
         } else {
             document.exitFullscreen();
         }
+    };
+
+    window.switchUserCamera = function() {
+        if (!ROOM_DATA.isAdmin || !remoteSocketId) {
+            showToast('Tidak dapat mengontrol kamera user', 'error');
+            return;
+        }
+
+        console.log(`[Room] 👑 Admin switching user camera`);
+
+        // Send command to user
+        socket.emit('admin-switch-user-camera', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId
+        });
+
+        showToast('🔄 Mengirim perintah switch kamera ke user', 'info');
     };
 
     window.endCall = function() {
