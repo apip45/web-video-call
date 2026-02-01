@@ -46,6 +46,12 @@ class WebRTCHandler {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 2000;
 
+        // Timeouts
+        this.iceGatheringTimeout = null;
+        this.connectionTimeout = null;
+        this.ICE_GATHERING_TIMEOUT = 15000; // 15 seconds
+        this.CONNECTION_TIMEOUT = 20000; // 20 seconds
+
         // Callbacks
         this.onRemoteStream = options.onRemoteStream || (() => {});
         this.onConnectionStateChange = options.onConnectionStateChange || (() => {});
@@ -636,6 +642,9 @@ class WebRTCHandler {
     createPeerConnection() {
         console.log('[WebRTC] 🔗 Creating peer connection...');
 
+        // Clear any existing timeouts
+        this.clearConnectionTimeouts();
+
         const config = {
             iceServers: this.iceServers,
             iceCandidatePoolSize: 10,
@@ -658,7 +667,7 @@ class WebRTCHandler {
             });
         }
 
-        // Handle ICE candidates
+        // Handle ICE candidates with timeout
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
                 console.log('[WebRTC] 🧊 ICE candidate generated');
@@ -667,6 +676,10 @@ class WebRTCHandler {
                     candidate: event.candidate,
                     targetSocketId: this.remoteSocketId
                 });
+            } else {
+                // ICE gathering complete
+                console.log('[WebRTC] ✅ ICE gathering complete');
+                this.clearIceGatheringTimeout();
             }
         };
 
@@ -675,13 +688,26 @@ class WebRTCHandler {
             const state = this.peerConnection.iceConnectionState;
             console.log(`[WebRTC] 🔄 ICE connection state: ${state}`);
             
+            if (state === 'connected' || state === 'completed') {
+                this.clearConnectionTimeouts();
+            } else if (state === 'disconnected' || state === 'failed') {
+                this.clearConnectionTimeouts();
+            }
+            
             this.handleConnectionStateChange(state);
         };
 
-        // Handle connection state
+        // Handle connection state with detailed logging and timeout handling
         this.peerConnection.onconnectionstatechange = () => {
             const state = this.peerConnection.connectionState;
             console.log(`[WebRTC] 🔄 Connection state: ${state}`);
+            
+            if (state === 'connecting') {
+                // Start connection timeout
+                this.startConnectionTimeout();
+            } else if (state === 'connected' || state === 'failed' || state === 'closed') {
+                this.clearConnectionTimeouts();
+            }
         };
 
         // Handle remote stream
@@ -774,6 +800,9 @@ class WebRTCHandler {
                 this.createPeerConnection();
             }
 
+            // Start ICE gathering timeout
+            this.startIceGatheringTimeout();
+
             const offer = await this.peerConnection.createOffer({
                 offerToReceiveAudio: true,
                 offerToReceiveVideo: true
@@ -789,6 +818,7 @@ class WebRTCHandler {
             });
         } catch (error) {
             console.error('[WebRTC] ❌ Failed to create offer:', error.message);
+            this.clearConnectionTimeouts();
             this.onError({ type: 'offer', message: error.message });
         }
     }
@@ -810,6 +840,9 @@ class WebRTCHandler {
             // Create new peer connection
             this.createPeerConnection();
 
+            // Start ICE gathering timeout
+            this.startIceGatheringTimeout();
+
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             
             // Process any ICE candidates that arrived before remote description was set
@@ -826,6 +859,7 @@ class WebRTCHandler {
             });
         } catch (error) {
             console.error('[WebRTC] ❌ Failed to handle offer:', error.message);
+            this.clearConnectionTimeouts();
             this.onError({ type: 'answer', message: error.message });
         }
     }
@@ -1045,10 +1079,20 @@ class WebRTCHandler {
      */
 
     /**
-     * Close peer connection
+     * Close peer connection with proper cleanup
      */
     closePeerConnection() {
+        // Clear all timeouts first
+        this.clearConnectionTimeouts();
+        
         if (this.peerConnection) {
+            // Remove event listeners to prevent memory leaks
+            this.peerConnection.onicecandidate = null;
+            this.peerConnection.oniceconnectionstatechange = null;
+            this.peerConnection.onconnectionstatechange = null;
+            this.peerConnection.ontrack = null;
+            
+            // Close the connection
             this.peerConnection.close();
             this.peerConnection = null;
             console.log('[WebRTC] 🔒 Peer connection closed');
@@ -1056,6 +1100,7 @@ class WebRTCHandler {
         this.remoteStream = null;
         this.isConnected = false;
         this.pendingIceCandidates = []; // Clear pending candidates
+        this.remoteSocketId = null;
     }
 
     /**
@@ -1077,6 +1122,9 @@ class WebRTCHandler {
     cleanup() {
         console.log('[WebRTC] 🧹 Cleaning up...');
         
+        // Clear all timeouts
+        this.clearConnectionTimeouts();
+        
         // Cleanup based on mode
         if (this.mode === 'sfu') {
             this.stopSFUSession();
@@ -1087,6 +1135,78 @@ class WebRTCHandler {
         this.stopLocalStream();
         this.isConnected = false;
         this.reconnectAttempts = 0;
+    }
+
+    /**
+     * =========================================================================
+     * TIMEOUT MANAGEMENT
+     * =========================================================================
+     */
+
+    /**
+     * Start ICE gathering timeout
+     */
+    startIceGatheringTimeout() {
+        this.clearIceGatheringTimeout();
+        
+        console.log(`[WebRTC] ⏰ Starting ICE gathering timeout (${this.ICE_GATHERING_TIMEOUT/1000}s)`);
+        this.iceGatheringTimeout = setTimeout(() => {
+            if (this.peerConnection && this.peerConnection.iceGatheringState !== 'complete') {
+                console.warn('[WebRTC] ⚠️ ICE gathering timeout - forcing complete');
+                // Don't close connection, just log warning
+                // ICE gathering can continue in background
+            }
+        }, this.ICE_GATHERING_TIMEOUT);
+    }
+
+    /**
+     * Clear ICE gathering timeout
+     */
+    clearIceGatheringTimeout() {
+        if (this.iceGatheringTimeout) {
+            clearTimeout(this.iceGatheringTimeout);
+            this.iceGatheringTimeout = null;
+        }
+    }
+
+    /**
+     * Start connection timeout
+     */
+    startConnectionTimeout() {
+        this.clearConnectionTimeout();
+        
+        console.log(`[WebRTC] ⏰ Starting connection timeout (${this.CONNECTION_TIMEOUT/1000}s)`);
+        this.connectionTimeout = setTimeout(() => {
+            if (this.peerConnection && 
+                this.peerConnection.connectionState === 'connecting' &&
+                !this.isConnected) {
+                console.error('[WebRTC] ❌ Connection timeout - closing and retrying');
+                this.handleConnectionStateChange('failed');
+                this.closePeerConnection();
+                this.onError({ 
+                    type: 'timeout', 
+                    message: 'Koneksi timeout. Silakan coba refresh atau keluar dan masuk lagi.' 
+                });
+            }
+        }, this.CONNECTION_TIMEOUT);
+    }
+
+    /**
+     * Clear connection timeout
+     */
+    clearConnectionTimeout() {
+        if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+        }
+    }
+
+    /**
+     * Clear all connection timeouts
+     */
+    clearConnectionTimeouts() {
+        this.clearIceGatheringTimeout();
+        this.clearConnectionTimeout();
     }
 }
 

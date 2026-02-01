@@ -17,6 +17,11 @@ const ROOM_CLEANUP_DELAY = 10000; // 10 seconds
 // Store for active call stats
 const activeCallStats = new Map();
 
+// Store for heartbeat tracking
+const heartbeatTimers = new Map();
+const HEARTBEAT_INTERVAL = 10000; // 10 seconds
+const HEARTBEAT_TIMEOUT = 25000; // 25 seconds (2.5x interval)
+
 /**
  * Setup Socket.IO handlers
  * @param {Server} io - Socket.IO server instance
@@ -39,6 +44,17 @@ const setupSocketHandlers = (io) => {
 
     io.on('connection', (socket) => {
         console.log(`[Socket] ✅ Connected: ${socket.username} (${socket.id}) - Role: ${socket.userRole}`);
+
+        // Start heartbeat for this socket
+        startHeartbeat(socket);
+
+        // =========================================================================
+        // HEARTBEAT - PONG
+        // =========================================================================
+        socket.on('pong', () => {
+            // Reset heartbeat timeout
+            resetHeartbeat(socket);
+        });
 
         // =========================================================================
         // JOIN ROOM
@@ -521,6 +537,10 @@ const setupSocketHandlers = (io) => {
         // =========================================================================
         socket.on('disconnect', async (reason) => {
             console.log(`[Socket] 👋 Disconnected: ${socket.username} - ${reason}`);
+            
+            // Clear heartbeat
+            stopHeartbeat(socket);
+            
             await handleLeaveRoom(socket, io, socket.roomId);
         });
     });
@@ -658,6 +678,70 @@ function startPeriodicCleanup() {
             console.error(`[Cleanup] ❌ Periodic cleanup error: ${error.message}`);
         }
     }, 30000); // Run every 30 seconds
+}
+
+/**
+ * =========================================================================
+ * HEARTBEAT MECHANISM
+ * =========================================================================
+ */
+
+/**
+ * Start heartbeat for a socket
+ */
+function startHeartbeat(socket) {
+    const heartbeat = setInterval(() => {
+        if (socket.connected) {
+            socket.emit('ping');
+            console.log(`[Heartbeat] 💓 Ping sent to ${socket.username}`);
+        } else {
+            stopHeartbeat(socket);
+        }
+    }, HEARTBEAT_INTERVAL);
+
+    // Set timeout to detect if pong is not received
+    const timeout = setTimeout(() => {
+        if (socket.connected) {
+            console.warn(`[Heartbeat] ⚠️ No pong received from ${socket.username} - disconnecting`);
+            socket.disconnect(true);
+        }
+    }, HEARTBEAT_TIMEOUT);
+
+    heartbeatTimers.set(socket.id, { interval: heartbeat, timeout: timeout });
+}
+
+/**
+ * Reset heartbeat timeout (called when pong received)
+ */
+function resetHeartbeat(socket) {
+    const timers = heartbeatTimers.get(socket.id);
+    if (timers && timers.timeout) {
+        clearTimeout(timers.timeout);
+        
+        // Set new timeout
+        const timeout = setTimeout(() => {
+            if (socket.connected) {
+                console.warn(`[Heartbeat] ⚠️ No pong received from ${socket.username} - disconnecting`);
+                socket.disconnect(true);
+            }
+        }, HEARTBEAT_TIMEOUT);
+        
+        timers.timeout = timeout;
+        heartbeatTimers.set(socket.id, timers);
+    }
+}
+
+/**
+ * Stop heartbeat for a socket
+ */
+function stopHeartbeat(socket) {
+    const timers = heartbeatTimers.get(socket.id);
+    if (timers) {
+        if (timers.interval) clearInterval(timers.interval);
+        if (timers.timeout) clearTimeout(timers.timeout);
+        heartbeatTimers.delete(socket.id);
+        console.log(`[Heartbeat] 🛑 Stopped for ${socket.username}`);
+    }
 }
 
 module.exports = setupSocketHandlers;

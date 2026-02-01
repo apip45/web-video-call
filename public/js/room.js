@@ -165,6 +165,11 @@
         socket.on('reconnect-peer', handleReconnectPeer);
         socket.on('reconnect-failed', handleReconnectFailed);
 
+        // Heartbeat - respond to server pings
+        socket.on('ping', () => {
+            socket.emit('pong');
+        });
+
         // Errors
         socket.on('error', (data) => {
             console.error('[Room] ❌ Server error:', data.message);
@@ -340,7 +345,7 @@
         window.location.href = '/';
     }
 
-    function handleUserJoined(data) {
+    async function handleUserJoined(data) {
         console.log(`[Room] 👤 User joined: ${data.username} (${data.socketId}) - role: ${data.userRole}`);
         showToast(`${data.username} bergabung`, 'success');
 
@@ -374,6 +379,9 @@
             console.log('[Room] 🔄 Closing existing peer connection before creating new one');
             webrtc.closePeerConnection();
         }
+        
+        // Wait a bit for cleanup to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Clear pending ICE candidates from previous session
         webrtc.pendingIceCandidates = [];
@@ -423,9 +431,18 @@
         console.log('[Room] 🔄 Reset to initiator mode, waiting for new peer');
     }
 
-    function handleOffer(data) {
+    async function handleOffer(data) {
         console.log(`[Room] 📥 Received offer from: ${data.senderUsername}`);
         elements.remoteUsername.textContent = data.senderUsername;
+        
+        // Close any existing peer connection before handling new offer
+        if (webrtc.peerConnection) {
+            console.log('[Room] 🔄 Closing existing peer connection before handling new offer');
+            webrtc.closePeerConnection();
+            // Wait a bit for cleanup
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
         webrtc.handleOffer(data.offer, data.senderSocketId, data.senderUsername);
     }
 
@@ -643,22 +660,43 @@
                 console.log('[Room] 📱 App went to background');
             } else {
                 console.log('[Room] 📱 App came to foreground');
+                
+                // Check connection state when returning
+                if (webrtc && webrtc.peerConnection) {
+                    const connState = webrtc.peerConnection.connectionState;
+                    const iceState = webrtc.peerConnection.iceConnectionState;
+                    console.log(`[Room] 🔍 Connection check: connectionState=${connState}, iceState=${iceState}`);
+                    
+                    // If connection is broken, show message and suggest refresh
+                    if (connState === 'disconnected' || connState === 'failed' || 
+                        iceState === 'disconnected' || iceState === 'failed') {
+                        console.warn('[Room] ⚠️ Connection lost while in background');
+                        showToast('Koneksi terputus. Coba refresh halaman.', 'warning');
+                    }
+                }
             }
         });
 
-        // Handle page unload
+        // Handle page unload - improved cleanup
         window.addEventListener('beforeunload', () => {
+            console.log('[Room] 💾 Cleaning up before unload...');
+            
             // Cleanup stats interval
             if (statsInterval) {
                 clearInterval(statsInterval);
                 statsInterval = null;
             }
             
-            if (socket) {
-                socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
-            }
+            // Cleanup WebRTC first (this clears timeouts)
             if (webrtc) {
                 webrtc.cleanup();
+            }
+            
+            // Then leave room via socket
+            if (socket && socket.connected) {
+                socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
+                // Give a tiny moment for the message to send
+                // Note: This is best-effort, browser may cut it off
             }
         });
 
