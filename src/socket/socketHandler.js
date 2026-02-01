@@ -359,6 +359,77 @@ const setupSocketHandlers = (io) => {
         });
 
         // =========================================================================
+        // ADMIN CHANGE VIDEO QUALITY (Admin controls user's video quality)
+        // =========================================================================
+        socket.on('admin-change-video-quality', async (data) => {
+            try {
+                const { roomId, targetSocketId, qualitySettings } = data;
+                
+                // Only allow admin to send this command
+                if (socket.userRole !== 'admin') {
+                    console.log(`[Socket] ⚠️ Non-admin ${socket.username} tried to change video quality`);
+                    socket.emit('admin-quality-response', { 
+                        success: false, 
+                        message: 'Hanya admin yang dapat mengubah video quality' 
+                    });
+                    return;
+                }
+
+                console.log(`[Socket] 👑 Admin ${socket.username} changing video quality for user ${targetSocketId}`);
+                console.log(`[Socket] 🎥 Quality settings:`, qualitySettings);
+
+                // Validate quality settings
+                if (!qualitySettings || !qualitySettings.width || !qualitySettings.height) {
+                    socket.emit('admin-quality-response', { 
+                        success: false, 
+                        message: 'Invalid quality settings' 
+                    });
+                    return;
+                }
+
+                // Find the target user in the room
+                const room = await Room.findOne({ roomId: roomId });
+                if (room) {
+                    const targetParticipant = room.participants.find(p => p.socketId === targetSocketId);
+                    if (targetParticipant && targetParticipant.role === 'user') {
+                        // Send command to target user (silently, no notification)
+                        socket.to(targetSocketId).emit('admin-quality-command', {
+                            qualitySettings: qualitySettings,
+                            adminUsername: socket.username
+                        });
+
+                        // Send confirmation to admin
+                        socket.emit('admin-quality-response', { 
+                            success: true, 
+                            message: 'Video quality sedang diterapkan...',
+                            settings: qualitySettings
+                        });
+
+                        // Log the action
+                        console.log(`[Socket] 📡 Sent quality change command: ${qualitySettings.resolution || 'custom'} (${qualitySettings.width}x${qualitySettings.height})`);
+                    } else {
+                        console.log(`[Socket] ⚠️ Target user not found or not a user role`);
+                        socket.emit('admin-quality-response', { 
+                            success: false, 
+                            message: 'User tidak ditemukan atau bukan role user' 
+                        });
+                    }
+                } else {
+                    socket.emit('admin-quality-response', { 
+                        success: false, 
+                        message: 'Room tidak ditemukan' 
+                    });
+                }
+            } catch (error) {
+                console.error(`[Socket] ❌ Admin change video quality error: ${error.message}`);
+                socket.emit('admin-quality-response', { 
+                    success: false, 
+                    message: 'Terjadi error: ' + error.message 
+                });
+            }
+        });
+
+        // =========================================================================
         // SCREEN SHARE STATUS
         socket.on('screen-share-status', async (data) => {
             try {

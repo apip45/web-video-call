@@ -124,6 +124,82 @@
                 </div>
             </div>
         </div>
+
+        <!-- Video Quality Settings Panel (Admin Only) -->
+        <div class="quality-panel" id="qualityPanel">
+            <div class="quality-panel-header">
+                <span>🎥 Video Quality Settings</span>
+                <button class="btn-close" onclick="toggleQualityPanel()">&times;</button>
+            </div>
+            <div class="quality-panel-body">
+                <!-- Preset Selection -->
+                <div class="quality-section">
+                    <label class="quality-label">Preset Resolusi</label>
+                    <select id="resolutionPreset" class="quality-select" onchange="onPresetChange()">
+                        <option value="360p">360p (nHD) - 640x360</option>
+                        <option value="480p">480p (SD) - 854x480</option>
+                        <option value="720p" selected>720p (HD) - 1280x720</option>
+                        <option value="1080p">1080p (Full HD) - 1920x1080</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+
+                <!-- Custom Resolution -->
+                <div class="quality-section" id="customResolutionSection" style="display: none;">
+                    <label class="quality-label">Resolusi Custom</label>
+                    <div class="quality-row">
+                        <input type="number" id="customWidth" class="quality-input" placeholder="Width" min="320" max="3840" value="1280">
+                        <span class="quality-separator">×</span>
+                        <input type="number" id="customHeight" class="quality-input" placeholder="Height" min="240" max="2160" value="720">
+                    </div>
+                </div>
+
+                <!-- Bitrate -->
+                <div class="quality-section">
+                    <label class="quality-label">
+                        Bitrate: <span id="bitrateValue">1200 kbps</span>
+                    </label>
+                    <input type="range" id="bitrateSlider" class="quality-slider" 
+                           min="300" max="5000" step="50" value="1200" 
+                           oninput="updateBitrateDisplay()">
+                    <div class="quality-range-labels">
+                        <span>300 kbps</span>
+                        <span>5000 kbps</span>
+                    </div>
+                </div>
+
+                <!-- Framerate -->
+                <div class="quality-section">
+                    <label class="quality-label">
+                        Framerate: <span id="framerateValue">30 fps</span>
+                    </label>
+                    <input type="range" id="framerateSlider" class="quality-slider" 
+                           min="15" max="60" step="5" value="30" 
+                           oninput="updateFramerateDisplay()">
+                    <div class="quality-range-labels">
+                        <span>15 fps</span>
+                        <span>60 fps</span>
+                    </div>
+                </div>
+
+                <!-- Apply Button -->
+                <button class="btn btn-primary btn-block" onclick="applyQualitySettings()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Terapkan Perubahan
+                </button>
+
+                <div class="quality-info">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <p>Pengaturan akan diterapkan ke video user secara realtime tanpa notifikasi. Jika resolusi tidak support, sistem otomatis menurunkan ke resolusi yang lebih rendah.</p>
+                </div>
+            </div>
+        </div>
         <% } %>
 
         <!-- Mini Stats (All Users) -->
@@ -222,6 +298,14 @@
         
         <div class="controls-right">
             <% if (isAdmin) { %>
+            <!-- Video Quality Settings (Admin) -->
+            <button class="control-btn" id="qualityBtn" onclick="toggleQualityPanel()" title="Video Quality Settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3"/>
+                </svg>
+            </button>
+
             <!-- Toggle Stats Panel (Admin) -->
             <button class="control-btn" id="statsBtn" onclick="toggleStatsPanel()" title="WebRTC Stats">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -317,6 +401,7 @@
     
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/theme.js"></script>
+    <script src="/js/videoQualityPresets.js"></script>
     <!-- Load Ion-SFU client if in SFU mode -->
     <% if (webrtcMode === 'sfu') { %>
     <script src="/js/ionSFUClient.js"></script>

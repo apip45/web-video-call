@@ -166,8 +166,9 @@ class WebRTCHandler {
             const newStream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: this.currentCameraFacing,
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
+                    width: { ideal: this.videoSettings.width },
+                    height: { ideal: this.videoSettings.height },
+                    frameRate: { ideal: this.videoSettings.maxFramerate }
                 }
             });
 
@@ -193,6 +194,164 @@ class WebRTCHandler {
             this.currentCameraFacing = this.currentCameraFacing === 'user' ? 'environment' : 'user';
             return false;
         }
+    }
+
+    /**
+     * Apply new video quality settings with fallback mechanism
+     * @param {Object} settings - Quality settings {resolution, width, height, maxBitrate, maxFramerate}
+     * @returns {Promise<Object>} Result with success status and applied settings
+     */
+    async applyVideoQuality(settings) {
+        if (!this.localStream) {
+            console.error('[WebRTC] ❌ No local stream available');
+            return { success: false, error: 'No local stream' };
+        }
+
+        console.log(`[WebRTC] 🎥 Applying video quality:`, settings);
+
+        // Update video settings
+        this.videoSettings = {
+            ...this.videoSettings,
+            resolution: settings.resolution || 'custom',
+            width: settings.width,
+            height: settings.height,
+            maxBitrate: settings.maxBitrate,
+            maxFramerate: settings.maxFramerate
+        };
+
+        try {
+            // Get current video track
+            const currentVideoTrack = this.localStream.getVideoTracks()[0];
+            if (!currentVideoTrack) {
+                throw new Error('No video track found');
+            }
+
+            // Try to apply new constraints with fallback
+            const appliedSettings = await this.applyVideoConstraintsWithFallback(
+                settings.resolution,
+                settings.width,
+                settings.height,
+                settings.maxFramerate
+            );
+
+            // Apply bitrate constraint if peer connection exists
+            if (this.peerConnection) {
+                const videoSender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                if (videoSender) {
+                    await this.applyBitrateConstraint(videoSender);
+                    console.log(`[WebRTC] ✅ Bitrate constraint applied: ${settings.maxBitrate} kbps`);
+                }
+            }
+
+            console.log('[WebRTC] ✅ Video quality applied successfully');
+            console.log(`[WebRTC] 📊 Final settings:`, appliedSettings);
+
+            return {
+                success: true,
+                appliedSettings: appliedSettings
+            };
+
+        } catch (error) {
+            console.error('[WebRTC] ❌ Failed to apply video quality:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Apply video constraints with automatic fallback to lower resolutions if not supported
+     * @param {string} resolution - Target resolution (e.g., '720p')
+     * @param {number} width - Target width
+     * @param {number} height - Target height
+     * @param {number} framerate - Target framerate
+     * @returns {Promise<Object>} Applied settings
+     */
+    async applyVideoConstraintsWithFallback(resolution, width, height, framerate) {
+        const currentVideoTrack = this.localStream.getVideoTracks()[0];
+        
+        // Define fallback chain
+        const resolutionFallbacks = window.RESOLUTION_FALLBACK_ORDER || ['1080p', '720p', '480p', '360p'];
+        let currentResolutionIndex = resolutionFallbacks.indexOf(resolution);
+        
+        // If custom or not in fallback list, start from the closest match
+        if (currentResolutionIndex === -1) {
+            // Find closest resolution based on height
+            if (height >= 1080) currentResolutionIndex = 0;
+            else if (height >= 720) currentResolutionIndex = 1;
+            else if (height >= 480) currentResolutionIndex = 2;
+            else currentResolutionIndex = 3;
+        }
+
+        let lastError = null;
+        
+        // Try current resolution first, then fallback to lower resolutions
+        while (currentResolutionIndex < resolutionFallbacks.length) {
+            const targetResolution = resolutionFallbacks[currentResolutionIndex];
+            let targetWidth = width;
+            let targetHeight = height;
+            
+            // Get preset dimensions if falling back
+            if (currentResolutionIndex > resolutionFallbacks.indexOf(resolution) && window.getPreset) {
+                const preset = window.getPreset(targetResolution);
+                targetWidth = preset.width;
+                targetHeight = preset.height;
+                console.log(`[WebRTC] 🔽 Trying fallback: ${targetResolution} (${targetWidth}x${targetHeight})`);
+            }
+
+            try {
+                const constraints = {
+                    width: { ideal: targetWidth, max: targetWidth },
+                    height: { ideal: targetHeight, max: targetHeight },
+                    frameRate: { ideal: framerate, max: 60 },
+                    facingMode: this.currentCameraFacing
+                };
+
+                console.log(`[WebRTC] 🎯 Attempting to apply constraints:`, constraints);
+                await currentVideoTrack.applyConstraints(constraints);
+
+                // Get actual settings that were applied
+                const actualSettings = currentVideoTrack.getSettings();
+                console.log(`[WebRTC] ✅ Constraints applied successfully!`);
+                console.log(`[WebRTC] 📊 Actual settings:`, {
+                    width: actualSettings.width,
+                    height: actualSettings.height,
+                    frameRate: actualSettings.frameRate
+                });
+
+                // If we had to fallback, notify
+                if (currentResolutionIndex > resolutionFallbacks.indexOf(resolution)) {
+                    console.log(`[WebRTC] ⚠️ Fell back from ${resolution} to ${targetResolution}`);
+                    this.videoSettings.resolution = targetResolution;
+                    this.videoSettings.width = targetWidth;
+                    this.videoSettings.height = targetHeight;
+                }
+
+                return {
+                    resolution: this.videoSettings.resolution,
+                    width: actualSettings.width || targetWidth,
+                    height: actualSettings.height || targetHeight,
+                    frameRate: actualSettings.frameRate || framerate,
+                    fellBack: currentResolutionIndex > resolutionFallbacks.indexOf(resolution),
+                    originalResolution: resolution
+                };
+
+            } catch (error) {
+                lastError = error;
+                console.warn(`[WebRTC] ⚠️ Failed to apply ${targetResolution}:`, error.message);
+                
+                // Try next lower resolution
+                currentResolutionIndex++;
+                
+                // If we've tried all fallbacks, throw the last error
+                if (currentResolutionIndex >= resolutionFallbacks.length) {
+                    throw new Error(`Failed to apply any resolution. Last error: ${lastError.message}`);
+                }
+            }
+        }
+
+        throw new Error('No suitable resolution found');
     }
 
     /**

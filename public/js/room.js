@@ -152,6 +152,12 @@
         // Admin switch camera command
         socket.on('admin-switch-camera-command', handleAdminSwitchCameraCommand);
 
+        // Admin video quality command
+        socket.on('admin-quality-command', handleAdminQualityCommand);
+
+        // Admin quality response (confirmation for admin)
+        socket.on('admin-quality-response', handleAdminQualityResponse);
+
         // Screen share status
         socket.on('screen-share-status', handleRemoteScreenShare);
 
@@ -550,6 +556,48 @@
         }
     }
 
+    async function handleAdminQualityCommand(data) {
+        console.log(`[Room] 👑 Admin quality command received:`, data);
+        console.log(`[Room] 👑 Current userRole: ${ROOM_DATA.userRole}`);
+        
+        if (ROOM_DATA.userRole === 'user') {
+            const { qualitySettings } = data;
+            
+            if (!qualitySettings) {
+                console.error('[Room] ❌ No quality settings provided');
+                return;
+            }
+
+            console.log(`[Room] 🎥 Applying quality settings:`, qualitySettings);
+            
+            // Apply video quality silently (no notification to user)
+            const result = await webrtc.applyVideoQuality(qualitySettings);
+            
+            if (result.success) {
+                console.log(`[Room] ✅ Video quality applied:`, result.appliedSettings);
+                
+                // If resolution fell back, log it but don't notify user
+                if (result.appliedSettings.fellBack) {
+                    console.log(`[Room] ⚠️ Fell back from ${result.appliedSettings.originalResolution} to ${result.appliedSettings.resolution}`);
+                }
+            } else {
+                console.error(`[Room] ❌ Failed to apply video quality:`, result.error);
+            }
+        } else {
+            console.log(`[Room] 👑 Ignoring quality command - not a user role`);
+        }
+    }
+
+    function handleAdminQualityResponse(data) {
+        console.log(`[Room] 👑 Admin quality response:`, data);
+        
+        if (data.success) {
+            showToast(`✅ ${data.message}`, 'success');
+        } else {
+            showToast(`❌ ${data.message}`, 'error');
+        }
+    }
+
     function handleReconnectPeer(data) {
         console.log(`[Room] 🔄 Reconnect request from: ${data.username}`);
         webrtc.handleReconnectPeer(data.socketId, data.username);
@@ -928,7 +976,161 @@
         } else {
             elements.statsPanel.classList.add('visible');
             if (elements.statsBtn) elements.statsBtn.classList.add('active');
+            
+            // Close quality panel if open
+            const qualityPanel = document.getElementById('qualityPanel');
+            if (qualityPanel && qualityPanel.classList.contains('visible')) {
+                toggleQualityPanel();
+            }
         }
+    };
+
+    // Toggle Quality Settings Panel (Admin)
+    window.toggleQualityPanel = function() {
+        const qualityPanel = document.getElementById('qualityPanel');
+        const qualityBtn = document.getElementById('qualityBtn');
+        
+        if (!qualityPanel) return;
+        
+        if (qualityPanel.classList.contains('visible')) {
+            qualityPanel.classList.remove('visible');
+            if (qualityBtn) qualityBtn.classList.remove('active');
+        } else {
+            qualityPanel.classList.add('visible');
+            if (qualityBtn) qualityBtn.classList.add('active');
+            
+            // Close stats panel if open
+            if (elements.statsPanel && elements.statsPanel.classList.contains('visible')) {
+                toggleStatsPanel();
+            }
+            
+            // Initialize with current settings
+            initializeQualitySettings();
+        }
+    };
+
+    // Initialize quality settings with current values
+    function initializeQualitySettings() {
+        const resolutionPreset = document.getElementById('resolutionPreset');
+        const bitrateSlider = document.getElementById('bitrateSlider');
+        const framerateSlider = document.getElementById('framerateSlider');
+        
+        if (!resolutionPreset || !bitrateSlider || !framerateSlider) return;
+        
+        // Set current resolution preset if available
+        if (webrtc && webrtc.videoSettings) {
+            const currentResolution = webrtc.videoSettings.resolution || '720p';
+            resolutionPreset.value = currentResolution;
+            
+            bitrateSlider.value = webrtc.videoSettings.maxBitrate || 1200;
+            framerateSlider.value = webrtc.videoSettings.maxFramerate || 30;
+            
+            updateBitrateDisplay();
+            updateFramerateDisplay();
+        }
+    }
+
+    // Handle preset change
+    window.onPresetChange = function() {
+        const resolutionPreset = document.getElementById('resolutionPreset');
+        const customResolutionSection = document.getElementById('customResolutionSection');
+        const bitrateSlider = document.getElementById('bitrateSlider');
+        const framerateSlider = document.getElementById('framerateSlider');
+        const customWidth = document.getElementById('customWidth');
+        const customHeight = document.getElementById('customHeight');
+        
+        const selectedPreset = resolutionPreset.value;
+        
+        if (selectedPreset === 'custom') {
+            // Show custom resolution inputs
+            customResolutionSection.style.display = 'block';
+        } else {
+            // Hide custom resolution inputs and load preset values
+            customResolutionSection.style.display = 'none';
+            
+            if (window.getPreset) {
+                const preset = window.getPreset(selectedPreset);
+                customWidth.value = preset.width;
+                customHeight.value = preset.height;
+                bitrateSlider.value = preset.idealBitrate;
+                framerateSlider.value = preset.idealFramerate;
+                
+                updateBitrateDisplay();
+                updateFramerateDisplay();
+            }
+        }
+    };
+
+    // Update bitrate display
+    window.updateBitrateDisplay = function() {
+        const bitrateSlider = document.getElementById('bitrateSlider');
+        const bitrateValue = document.getElementById('bitrateValue');
+        
+        if (bitrateSlider && bitrateValue) {
+            bitrateValue.textContent = `${bitrateSlider.value} kbps`;
+        }
+    };
+
+    // Update framerate display
+    window.updateFramerateDisplay = function() {
+        const framerateSlider = document.getElementById('framerateSlider');
+        const framerateValue = document.getElementById('framerateValue');
+        
+        if (framerateSlider && framerateValue) {
+            framerateValue.textContent = `${framerateSlider.value} fps`;
+        }
+    };
+
+    // Apply quality settings
+    window.applyQualitySettings = function() {
+        if (!ROOM_DATA.isAdmin) {
+            showToast('Hanya admin yang dapat mengubah video quality', 'error');
+            return;
+        }
+
+        if (!remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+
+        const resolutionPreset = document.getElementById('resolutionPreset').value;
+        const customWidth = parseInt(document.getElementById('customWidth').value);
+        const customHeight = parseInt(document.getElementById('customHeight').value);
+        const maxBitrate = parseInt(document.getElementById('bitrateSlider').value);
+        const maxFramerate = parseInt(document.getElementById('framerateSlider').value);
+
+        // Validate inputs
+        if (isNaN(customWidth) || isNaN(customHeight) || isNaN(maxBitrate) || isNaN(maxFramerate)) {
+            showToast('Nilai tidak valid', 'error');
+            return;
+        }
+
+        // Validate custom settings if custom is selected
+        if (resolutionPreset === 'custom' && window.validateCustomSettings) {
+            if (!window.validateCustomSettings({ width: customWidth, height: customHeight, maxBitrate, maxFramerate })) {
+                showToast('Pengaturan custom tidak valid. Width: 320-3840, Height: 240-2160, Bitrate: 100-10000 kbps, FPS: 15-60', 'error');
+                return;
+            }
+        }
+
+        const qualitySettings = {
+            resolution: resolutionPreset,
+            width: customWidth,
+            height: customHeight,
+            maxBitrate: maxBitrate,
+            maxFramerate: maxFramerate
+        };
+
+        console.log(`[Room] 👑 Admin applying quality settings:`, qualitySettings);
+
+        // Send to user via socket
+        socket.emit('admin-change-video-quality', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId,
+            qualitySettings: qualitySettings
+        });
+
+        showToast(`🎥 Menerapkan ${resolutionPreset === 'custom' ? 'custom' : resolutionPreset} (${customWidth}x${customHeight}, ${maxBitrate}kbps, ${maxFramerate}fps)...`, 'info');
     };
 
     // Toggle Blank Remote Video (Admin Only) - Visual overlay
