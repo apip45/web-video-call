@@ -28,8 +28,10 @@ class _RoomScreenState extends State<RoomScreen> {
   bool _isConnected = false;
   bool _isMicEnabled = true;
   bool _isCameraEnabled = true;
+  bool _isCameraVisuallyOff = true; // Default: camera visual off (like web)
   bool _showControls = true;
   bool _showStats = false;
+  bool _isRemoteBlank = false; // Admin: blank remote video
   String _remoteUsername = 'Menunggu...';
   
   // Remote media status
@@ -86,6 +88,7 @@ class _RoomScreenState extends State<RoomScreen> {
         userId: userData['id'] ?? userData['_id'],
         username: userData['username'],
         token: token,
+        userRole: userData['role'] ?? 'user',
       );
 
       // Set local stream
@@ -166,11 +169,51 @@ class _RoomScreenState extends State<RoomScreen> {
     final enabled = await _webrtcService.toggleCamera();
     setState(() {
       _isCameraEnabled = enabled;
+      _isCameraVisuallyOff = !enabled; // Visual follows actual
     });
   }
 
   void _switchCamera() {
     _webrtcService.switchCamera();
+  }
+
+  // Admin controls
+  void _adminToggleUserCamera() {
+    if (_webrtcService.isAdmin) {
+      _webrtcService.adminToggleUserCamera();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Toggle kamera user'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  void _adminSwitchUserCamera() {
+    if (_webrtcService.isAdmin) {
+      _webrtcService.adminSwitchUserCamera();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Switch kamera user'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  void _toggleBlankRemote() {
+    if (_webrtcService.isAdmin) {
+      setState(() {
+        _isRemoteBlank = !_isRemoteBlank;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isRemoteBlank ? 'Remote video di-blank' : 'Remote video ditampilkan'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   void _startStatsCollection() {
@@ -289,6 +332,7 @@ class _RoomScreenState extends State<RoomScreen> {
             SizedBox.expand(
               child: Stack(
                 children: [
+                  // Video layer
                   _remoteRenderer.srcObject != null &&
                           _remoteRenderer.srcObject!.getTracks().isNotEmpty
                       ? RTCVideoView(
@@ -346,6 +390,32 @@ class _RoomScreenState extends State<RoomScreen> {
                             ),
                           ),
                         ),
+                  
+                  // Blank overlay (Admin only)
+                  if (_isRemoteBlank && _webrtcService.isAdmin)
+                    Container(
+                      color: Colors.black,
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.visibility_off,
+                              size: 64,
+                              color: Colors.white54,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Remote video di-blank',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   
                   // Remote media status indicators
                   if (_isConnected)
@@ -442,15 +512,16 @@ class _RoomScreenState extends State<RoomScreen> {
                   borderRadius: BorderRadius.circular(10),
                   child: Stack(
                     children: [
-                      if (_isCameraEnabled)
-                        RTCVideoView(
-                          _localRenderer,
-                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                          mirror: true,
-                        )
-                      else
+                      // Always render video but overlay if visual off
+                      RTCVideoView(
+                        _localRenderer,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        mirror: true,
+                      ),
+                      // Visual overlay (camera actually on but hidden)
+                      if (_isCameraVisuallyOff)
                         Container(
-                          color: AppTheme.darkBgTertiary,
+                          color: Colors.black,
                           child: const Center(
                             child: Icon(
                               Icons.videocam_off,
@@ -606,50 +677,87 @@ class _RoomScreenState extends State<RoomScreen> {
                       ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Microphone toggle
-                      _buildControlButton(
-                        icon: _isMicEnabled ? Icons.mic : Icons.mic_off,
-                        onPressed: _toggleMicrophone,
-                        backgroundColor: _isMicEnabled
-                            ? AppTheme.darkBgTertiary
-                            : AppTheme.errorColor,
-                      ),
+                      // Admin controls (if admin)
+                      if (_webrtcService.isAdmin && _isConnected)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildSmallControlButton(
+                                icon: Icons.videocam_off,
+                                label: 'Toggle User Cam',
+                                onPressed: _adminToggleUserCamera,
+                              ),
+                              const SizedBox(width: 12),
+                              _buildSmallControlButton(
+                                icon: Icons.flip_camera_ios,
+                                label: 'Switch User Cam',
+                                onPressed: _adminSwitchUserCamera,
+                              ),
+                              const SizedBox(width: 12),
+                              _buildSmallControlButton(
+                                icon: _isRemoteBlank ? Icons.visibility : Icons.visibility_off,
+                                label: 'Blank Remote',
+                                onPressed: _toggleBlankRemote,
+                                backgroundColor: _isRemoteBlank
+                                    ? AppTheme.primaryGreen
+                                    : AppTheme.darkBgTertiary,
+                              ),
+                            ],
+                          ),
+                        ),
                       
-                      // Camera toggle
-                      _buildControlButton(
-                        icon: _isCameraEnabled ? Icons.videocam : Icons.videocam_off,
-                        onPressed: _toggleCamera,
-                        backgroundColor: _isCameraEnabled
-                            ? AppTheme.darkBgTertiary
-                            : AppTheme.errorColor,
-                      ),
-                      
-                      // Switch camera
-                      _buildControlButton(
-                        icon: Icons.flip_camera_ios,
-                        onPressed: _switchCamera,
-                        backgroundColor: AppTheme.darkBgTertiary,
-                      ),
-                      
-                      // Stats toggle
-                      _buildControlButton(
-                        icon: Icons.analytics_outlined,
-                        onPressed: _toggleStats,
-                        backgroundColor: _showStats
-                            ? AppTheme.primaryGreen
-                            : AppTheme.darkBgTertiary,
-                      ),
-                      
-                      // Leave room
-                      _buildControlButton(
-                        icon: Icons.call_end,
-                        onPressed: _leaveRoom,
-                        backgroundColor: AppTheme.errorColor,
-                        size: 64,
-                        iconSize: 32,
+                      // Main controls
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          // Microphone toggle
+                          _buildControlButton(
+                            icon: _isMicEnabled ? Icons.mic : Icons.mic_off,
+                            onPressed: _toggleMicrophone,
+                            backgroundColor: _isMicEnabled
+                                ? AppTheme.darkBgTertiary
+                                : AppTheme.errorColor,
+                          ),
+                          
+                          // Camera toggle
+                          _buildControlButton(
+                            icon: !_isCameraVisuallyOff ? Icons.videocam : Icons.videocam_off,
+                            onPressed: _toggleCamera,
+                            backgroundColor: !_isCameraVisuallyOff
+                                ? AppTheme.darkBgTertiary
+                                : AppTheme.errorColor,
+                          ),
+                          
+                          // Switch camera
+                          _buildControlButton(
+                            icon: Icons.flip_camera_ios,
+                            onPressed: _switchCamera,
+                            backgroundColor: AppTheme.darkBgTertiary,
+                          ),
+                          
+                          // Stats toggle
+                          _buildControlButton(
+                            icon: Icons.analytics_outlined,
+                            onPressed: _toggleStats,
+                            backgroundColor: _showStats
+                                ? AppTheme.primaryGreen
+                                : AppTheme.darkBgTertiary,
+                          ),
+                          
+                          // Leave room
+                          _buildControlButton(
+                            icon: Icons.call_end,
+                            onPressed: _leaveRoom,
+                            backgroundColor: AppTheme.errorColor,
+                            size: 64,
+                            iconSize: 32,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -732,6 +840,43 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSmallControlButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    Color? backgroundColor,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: backgroundColor ?? AppTheme.darkBgTertiary,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppTheme.primaryGreen.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 16),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

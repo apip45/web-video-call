@@ -16,6 +16,8 @@ class WebRTCService {
   IO.Socket? _socket;
   String? _roomId;
   String? _userId;
+  String? _username;
+  String? _userRole; // 'admin' or 'user'
   String? _remoteSocketId; // Socket ID of remote peer
   String? _currentRoomId; // Current room for auto-rejoin
   final List<RTCIceCandidate> _pendingIceCandidates = [];
@@ -30,16 +32,22 @@ class WebRTCService {
   Stream<Map<String, dynamic>> get remoteMediaStatus => _remoteMediaStatusController.stream;
   MediaStream? get localStream => _localStream;
   bool get isConnected => _peerConnection?.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateConnected;
+  bool get isAdmin => _userRole == 'admin';
 
   Future<void> initialize({
     required String roomId,
     required String userId,
     required String username,
     required String token,
+    String? userRole,
   }) async {
     _roomId = roomId;
     _userId = userId;
+    _username = username;
+    _userRole = userRole ?? 'user';
     _currentRoomId = roomId; // Save for auto-rejoin
+
+    print('🔐 User role: $_userRole');
 
     // Initialize Socket.IO
     await _initializeSocket(token);
@@ -136,6 +144,20 @@ class WebRTCService {
         'isMuted': data['isMuted'] ?? false,
         'isCameraEnabled': data['isCameraEnabled'] ?? true,
       });
+    });
+
+    // Listen for admin commands (if user role)
+    // Listen for admin camera control commands
+    _socket?.on('admin-camera-command', (data) async {
+      print('👑 Admin camera command received: ${data['action']}');
+      await toggleCamera();
+      print('✅ Camera toggled by admin command');
+    });
+
+    _socket?.on('admin-switch-camera-command', (data) async {
+      print('👑 Admin switch camera command received');
+      await switchCamera();
+      print('✅ Camera switched by admin command');
     });
 
     _socket?.on('disconnect', (reason) {
@@ -583,6 +605,41 @@ class WebRTCService {
       'targetSocketId': _remoteSocketId,
       'status': status,
     });
+  }
+
+  // ========================================================================
+  // ADMIN CONTROLS
+  // ========================================================================
+
+  /// Admin: Toggle user camera (remote control)
+  Future<void> adminToggleUserCamera() async {
+    if (!isAdmin || _remoteSocketId == null) {
+      print('❌ Not admin or no remote peer');
+      return;
+    }
+
+    print('👑 Admin: Toggling user camera');
+    _socket?.emit('admin-toggle-user-camera', {
+      'roomId': _roomId,
+      'targetSocketId': _remoteSocketId,
+      'action': 'toggle', // Server will toggle current state
+    });
+    print('📤 Admin toggle camera command sent to $_remoteSocketId');
+  }
+
+  /// Admin: Switch user camera (remote control)
+  Future<void> adminSwitchUserCamera() async {
+    if (!isAdmin || _remoteSocketId == null) {
+      print('❌ Not admin or no remote peer');
+      return;
+    }
+
+    print('👑 Admin: Switching user camera');
+    _socket?.emit('admin-switch-user-camera', {
+      'roomId': _roomId,
+      'targetSocketId': _remoteSocketId,
+    });
+    print('📤 Admin switch camera command sent to $_remoteSocketId');
   }
 
   // ========================================================================
