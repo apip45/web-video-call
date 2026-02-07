@@ -652,6 +652,20 @@ class WebRTCHandler {
             rtcpMuxPolicy: 'require'
         };
 
+        // Log ICE server configuration untuk debugging
+        console.log('[WebRTC] 🌐 ICE Servers Configuration:');
+        this.iceServers.forEach((server, index) => {
+            const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+            console.log(`[WebRTC]   Server ${index + 1}:`);
+            urls.forEach(url => {
+                const type = url.startsWith('stun:') ? '🔵 STUN' : url.startsWith('turn:') ? '🟢 TURN' : '🟣 OTHER';
+                console.log(`[WebRTC]     ${type}: ${url}`);
+                if (server.username) {
+                    console.log(`[WebRTC]       Username: ${server.username}`);
+                }
+            });
+        });
+
         this.peerConnection = new RTCPeerConnection(config);
 
         // Add local tracks
@@ -757,6 +771,9 @@ class WebRTCHandler {
                 this.reconnectAttempts = 0;
                 console.log('[WebRTC] ✅ Connection established');
                 
+                // Log ICE candidate yang digunakan untuk debugging
+                this.logActiveICECandidate();
+                
                 // Send initial media status when connection is established
                 // This ensures remote peer knows our current camera/mic state
                 setTimeout(() => {
@@ -779,6 +796,87 @@ class WebRTCHandler {
                 this.isConnected = false;
                 console.log('[WebRTC] 🔒 Connection closed');
                 break;
+        }
+    }
+
+    /**
+     * Log active ICE candidate untuk debugging TURN/STUN usage
+     */
+    async logActiveICECandidate() {
+        if (!this.peerConnection) return;
+
+        try {
+            const stats = await this.peerConnection.getStats();
+            let selectedPair = null;
+            let localCandidate = null;
+            let remoteCandidate = null;
+
+            // Find selected candidate pair
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    selectedPair = report;
+                }
+            });
+
+            if (selectedPair) {
+                // Get local and remote candidates
+                stats.forEach(report => {
+                    if (report.type === 'local-candidate' && report.id === selectedPair.localCandidateId) {
+                        localCandidate = report;
+                    }
+                    if (report.type === 'remote-candidate' && report.id === selectedPair.remoteCandidateId) {
+                        remoteCandidate = report;
+                    }
+                });
+
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('[WebRTC] 🎯 ACTIVE ICE CONNECTION DETAILS:');
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                
+                if (localCandidate) {
+                    console.log('[WebRTC] 📍 Local Candidate:');
+                    console.log(`[WebRTC]   Type: ${localCandidate.candidateType}`);
+                    console.log(`[WebRTC]   Protocol: ${localCandidate.protocol}`);
+                    console.log(`[WebRTC]   Address: ${localCandidate.address || localCandidate.ip}:${localCandidate.port}`);
+                    
+                    // Identifikasi server yang digunakan
+                    if (localCandidate.candidateType === 'relay') {
+                        console.log('[WebRTC]   🟢 Using TURN Server (Relay)');
+                        console.log(`[WebRTC]   TURN Server: ${localCandidate.relayProtocol || localCandidate.protocol}`);
+                        if (localCandidate.address) {
+                            const turnServer = this.iceServers.find(s => {
+                                const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+                                return urls.some(url => url.includes(localCandidate.address));
+                            });
+                            if (turnServer) {
+                                const urls = Array.isArray(turnServer.urls) ? turnServer.urls : [turnServer.urls];
+                                console.log(`[WebRTC]   Server URLs: ${urls.join(', ')}`);
+                            }
+                        }
+                    } else if (localCandidate.candidateType === 'srflx') {
+                        console.log('[WebRTC]   🔵 Using STUN Server (Server Reflexive)');
+                        console.log('[WebRTC]   Connection: Via public internet (NAT traversal)');
+                    } else if (localCandidate.candidateType === 'host') {
+                        console.log('[WebRTC]   🟡 Using Local Network (Direct Connection)');
+                        console.log('[WebRTC]   Connection: Peer-to-peer without STUN/TURN');
+                    }
+                }
+
+                if (remoteCandidate) {
+                    console.log('[WebRTC] 📍 Remote Candidate:');
+                    console.log(`[WebRTC]   Type: ${remoteCandidate.candidateType}`);
+                    console.log(`[WebRTC]   Protocol: ${remoteCandidate.protocol}`);
+                    console.log(`[WebRTC]   Address: ${remoteCandidate.address || remoteCandidate.ip}:${remoteCandidate.port}`);
+                }
+
+                console.log('[WebRTC] 📊 Connection Statistics:');
+                console.log(`[WebRTC]   Bytes Sent: ${selectedPair.bytesSent || 0}`);
+                console.log(`[WebRTC]   Bytes Received: ${selectedPair.bytesReceived || 0}`);
+                console.log(`[WebRTC]   RTT (Round Trip Time): ${selectedPair.currentRoundTripTime ? (selectedPair.currentRoundTripTime * 1000).toFixed(2) + ' ms' : 'N/A'}`);
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            }
+        } catch (error) {
+            console.warn('[WebRTC] ⚠️ Could not get ICE candidate stats:', error.message);
         }
     }
 

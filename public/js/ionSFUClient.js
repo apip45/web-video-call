@@ -299,6 +299,20 @@ class IonSFUClient {
             console.log('[IonSFU] 📤 Publishing local stream...');
             this.localStream = stream;
             
+            // Log ICE servers configuration
+            console.log('[IonSFU] 🌐 Publish Connection - ICE Servers Configuration:');
+            this.iceServers.forEach((server, index) => {
+                const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+                console.log(`[IonSFU]   Server ${index + 1}:`);
+                urls.forEach(url => {
+                    const type = url.startsWith('stun:') ? '🔵 STUN' : url.startsWith('turn:') ? '🟢 TURN' : '🟣 OTHER';
+                    console.log(`[IonSFU]     ${type}: ${url}`);
+                    if (server.username) {
+                        console.log(`[IonSFU]       Username: ${server.username}`);
+                    }
+                });
+            });
+            
             // Create RTCPeerConnection for publishing
             this.publishPC = new RTCPeerConnection({
                 iceServers: this.iceServers,
@@ -319,6 +333,15 @@ class IonSFUClient {
                         target: 0,  // 0 = publisher
                         candidate: event.candidate.toJSON()
                     });
+                }
+            };
+            
+            // Monitor ICE connection state for publish
+            this.publishPC.oniceconnectionstatechange = () => {
+                console.log(`[IonSFU] 🔄 Publish ICE state: ${this.publishPC.iceConnectionState}`);
+                if (this.publishPC.iceConnectionState === 'connected' || 
+                    this.publishPC.iceConnectionState === 'completed') {
+                    this.logActiveICECandidate(this.publishPC, 'PUBLISH');
                 }
             };
             
@@ -397,6 +420,15 @@ class IonSFUClient {
                         target: 1,  // 1 = subscriber
                         candidate: event.candidate.toJSON()
                     });
+                }
+            };
+            
+            // Monitor ICE connection state for subscribe
+            this.subscribePC.oniceconnectionstatechange = () => {
+                console.log(`[IonSFU] 🔄 Subscribe ICE state: ${this.subscribePC.iceConnectionState}`);
+                if (this.subscribePC.iceConnectionState === 'connected' || 
+                    this.subscribePC.iceConnectionState === 'completed') {
+                    this.logActiveICECandidate(this.subscribePC, 'SUBSCRIBE');
                 }
             };
             
@@ -515,6 +547,87 @@ class IonSFUClient {
     isConnected() {
         return this.wsConnected && 
                (this.publishPC && this.publishPC.connectionState === 'connected');
+    }
+
+    /**
+     * Log active ICE candidate untuk debugging TURN/STUN usage
+     */
+    async logActiveICECandidate(peerConnection, connectionType) {
+        if (!peerConnection) return;
+
+        try {
+            const stats = await peerConnection.getStats();
+            let selectedPair = null;
+            let localCandidate = null;
+            let remoteCandidate = null;
+
+            // Find selected candidate pair
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    selectedPair = report;
+                }
+            });
+
+            if (selectedPair) {
+                // Get local and remote candidates
+                stats.forEach(report => {
+                    if (report.type === 'local-candidate' && report.id === selectedPair.localCandidateId) {
+                        localCandidate = report;
+                    }
+                    if (report.type === 'remote-candidate' && report.id === selectedPair.remoteCandidateId) {
+                        remoteCandidate = report;
+                    }
+                });
+
+                console.log('══════════════════════════════════════════════════');
+                console.log(`[IonSFU] 🎯 ACTIVE ICE ${connectionType} CONNECTION DETAILS:`);
+                console.log('══════════════════════════════════════════════════');
+                
+                if (localCandidate) {
+                    console.log('[IonSFU] 📍 Local Candidate:');
+                    console.log(`[IonSFU]   Type: ${localCandidate.candidateType}`);
+                    console.log(`[IonSFU]   Protocol: ${localCandidate.protocol}`);
+                    console.log(`[IonSFU]   Address: ${localCandidate.address || localCandidate.ip}:${localCandidate.port}`);
+                    
+                    // Identifikasi server yang digunakan
+                    if (localCandidate.candidateType === 'relay') {
+                        console.log('[IonSFU]   🟢 Using TURN Server (Relay)');
+                        console.log(`[IonSFU]   TURN Server: ${localCandidate.relayProtocol || localCandidate.protocol}`);
+                        if (localCandidate.address) {
+                            const turnServer = this.iceServers.find(s => {
+                                const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+                                return urls.some(url => url.includes(localCandidate.address));
+                            });
+                            if (turnServer) {
+                                const urls = Array.isArray(turnServer.urls) ? turnServer.urls : [turnServer.urls];
+                                console.log(`[IonSFU]   Server URLs: ${urls.join(', ')}`);
+                            }
+                        }
+                    } else if (localCandidate.candidateType === 'srflx') {
+                        console.log('[IonSFU]   🔵 Using STUN Server (Server Reflexive)');
+                        console.log('[IonSFU]   Connection: Via public internet (NAT traversal)');
+                    } else if (localCandidate.candidateType === 'host') {
+                        console.log('[IonSFU]   🟡 Using Local Network (Direct to SFU)');
+                        console.log('[IonSFU]   Connection: Direct without STUN/TURN');
+                    }
+                }
+
+                if (remoteCandidate) {
+                    console.log('[IonSFU] 📍 Remote Candidate (SFU):');
+                    console.log(`[IonSFU]   Type: ${remoteCandidate.candidateType}`);
+                    console.log(`[IonSFU]   Protocol: ${remoteCandidate.protocol}`);
+                    console.log(`[IonSFU]   Address: ${remoteCandidate.address || remoteCandidate.ip}:${remoteCandidate.port}`);
+                }
+
+                console.log('[IonSFU] 📊 Connection Statistics:');
+                console.log(`[IonSFU]   Bytes Sent: ${selectedPair.bytesSent || 0}`);
+                console.log(`[IonSFU]   Bytes Received: ${selectedPair.bytesReceived || 0}`);
+                console.log(`[IonSFU]   RTT (Round Trip Time): ${selectedPair.currentRoundTripTime ? (selectedPair.currentRoundTripTime * 1000).toFixed(2) + ' ms' : 'N/A'}`);
+                console.log('══════════════════════════════════════════════════');
+            }
+        } catch (error) {
+            console.warn('[IonSFU] ⚠️ Could not get ICE candidate stats:', error.message);
+        }
     }
 }
 
