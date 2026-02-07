@@ -160,6 +160,31 @@ class WebRTCService {
       print('✅ Camera switched by admin command');
     });
 
+    // Listen for admin video quality control commands
+    _socket?.on('admin-quality-command', (data) async {
+      print('👑 Admin quality command received');
+      final qualitySettings = data['qualitySettings'];
+      if (qualitySettings == null) {
+        print('❌ No quality settings provided');
+        return;
+      }
+
+      print('🎥 Applying quality settings: $qualitySettings');
+      final result = await applyVideoQuality(
+        width: qualitySettings['width'],
+        height: qualitySettings['height'],
+        maxBitrate: qualitySettings['maxBitrate'],
+        maxFramerate: qualitySettings['maxFramerate'],
+        resolution: qualitySettings['resolution'],
+      );
+
+      if (result['success'] == true) {
+        print('✅ Video quality applied by admin: ${result['appliedSettings']}');
+      } else {
+        print('❌ Failed to apply video quality: ${result['error']}');
+      }
+    });
+
     _socket?.on('disconnect', (reason) {
       print('═══════════════════════════════════════');
       print('❌ Socket disconnected');
@@ -640,6 +665,133 @@ class WebRTCService {
       'targetSocketId': _remoteSocketId,
     });
     print('📤 Admin switch camera command sent to $_remoteSocketId');
+  }
+
+  /// Admin: Change user video quality (remote control)
+  Future<void> adminChangeVideoQuality({
+    required String resolution,
+    required int width,
+    required int height,
+    required int maxBitrate,
+    required int maxFramerate,
+  }) async {
+    if (!isAdmin || _remoteSocketId == null) {
+      print('❌ Not admin or no remote peer');
+      return;
+    }
+
+    final qualitySettings = {
+      'resolution': resolution,
+      'width': width,
+      'height': height,
+      'maxBitrate': maxBitrate,
+      'maxFramerate': maxFramerate,
+    };
+
+    print('👑 Admin: Changing user video quality to $resolution');
+    print('📊 Quality settings: $qualitySettings');
+    
+    _socket?.emit('admin-change-video-quality', {
+      'roomId': _roomId,
+      'targetSocketId': _remoteSocketId,
+      'qualitySettings': qualitySettings,
+    });
+    print('📤 Admin video quality command sent to $_remoteSocketId');
+  }
+
+  // ========================================================================
+  // VIDEO QUALITY CONTROL
+  // ========================================================================
+
+  /// Apply video quality settings (resolution, bitrate, fps)
+  Future<Map<String, dynamic>> applyVideoQuality({
+    required int width,
+    required int height,
+    required int maxBitrate,
+    required int maxFramerate,
+    String? resolution,
+  }) async {
+    if (_localStream == null) {
+      return {'success': false, 'error': 'No local stream'};
+    }
+
+    print('🎥 Applying video quality: ${width}x$height @ ${maxFramerate}fps, ${maxBitrate}kbps');
+
+    try {
+      final videoTrack = _localStream!.getVideoTracks().firstOrNull;
+      if (videoTrack == null) {
+        return {'success': false, 'error': 'No video track'};
+      }
+
+      // Apply constraints to video track
+      final constraints = {
+        'width': {'ideal': width, 'max': width},
+        'height': {'ideal': height, 'max': height},
+        'frameRate': {'ideal': maxFramerate, 'max': 60},
+      };
+
+      print('🎯 Applying constraints: $constraints');
+      await videoTrack.applyConstraints(constraints);
+
+      // Get actual applied settings
+      final settings = await videoTrack.getSettings();
+      print('✅ Constraints applied!');
+      print('📊 Actual settings: ${settings['width']}x${settings['height']} @ ${settings['frameRate']}fps');
+
+      // Apply bitrate constraint if peer connection exists
+      if (_peerConnection != null) {
+        await _applyBitrateConstraint(maxBitrate);
+      }
+
+      return {
+        'success': true,
+        'appliedSettings': {
+          'resolution': resolution ?? 'custom',
+          'width': settings['width'] ?? width,
+          'height': settings['height'] ?? height,
+          'frameRate': settings['frameRate'] ?? maxFramerate,
+          'maxBitrate': maxBitrate,
+        }
+      };
+    } catch (e) {
+      print('❌ Failed to apply video quality: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Apply bitrate constraint to video sender
+  Future<void> _applyBitrateConstraint(int maxBitrate) async {
+    try {
+      final senders = await _peerConnection?.getSenders() ?? [];
+      RTCRtpSender? videoSender;
+      
+      for (final sender in senders) {
+        if (sender.track?.kind == 'video') {
+          videoSender = sender;
+          break;
+        }
+      }
+
+      if (videoSender == null) {
+        print('⚠️ No video sender found');
+        return;
+      }
+
+      // Get current parameters
+      var parameters = videoSender.parameters;
+      
+      // Set max bitrate in bits per second (input is in kbps)
+      if (parameters.encodings == null || parameters.encodings!.isEmpty) {
+        parameters.encodings = [RTCRtpEncoding()];
+      }
+      
+      parameters.encodings![0].maxBitrate = maxBitrate * 1000; // kbps to bps
+      
+      await videoSender.setParameters(parameters);
+      print('⚙️ Applied bitrate constraint: ${maxBitrate} kbps');
+    } catch (e) {
+      print('⚠️ Could not apply bitrate constraint: $e');
+    }
   }
 
   // ========================================================================

@@ -216,6 +216,40 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  void _showVideoQualityDialog() {
+    if (!_webrtcService.isAdmin) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => _VideoQualityDialog(
+        onApply: _adminChangeVideoQuality,
+      ),
+    );
+  }
+
+  void _adminChangeVideoQuality({
+    required String resolution,
+    required int width,
+    required int height,
+    required int maxBitrate,
+    required int maxFramerate,
+  }) {
+    _webrtcService.adminChangeVideoQuality(
+      resolution: resolution,
+      width: width,
+      height: height,
+      maxBitrate: maxBitrate,
+      maxFramerate: maxFramerate,
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Menerapkan $resolution (${width}x$height, ${maxBitrate}kbps, ${maxFramerate}fps)'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   void _startStatsCollection() {
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
@@ -692,16 +726,22 @@ class _RoomScreenState extends State<RoomScreen> {
                                 label: 'Toggle User Cam',
                                 onPressed: _adminToggleUserCamera,
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 8),
                               _buildSmallControlButton(
                                 icon: Icons.flip_camera_ios,
                                 label: 'Switch User Cam',
                                 onPressed: _adminSwitchUserCamera,
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 8),
+                              _buildSmallControlButton(
+                                icon: Icons.high_quality,
+                                label: 'Video Quality',
+                                onPressed: _showVideoQualityDialog,
+                              ),
+                              const SizedBox(width: 8),
                               _buildSmallControlButton(
                                 icon: _isRemoteBlank ? Icons.visibility : Icons.visibility_off,
-                                label: 'Blank Remote',
+                                label: 'Blank',
                                 onPressed: _toggleBlankRemote,
                                 backgroundColor: _isRemoteBlank
                                     ? AppTheme.primaryGreen
@@ -907,6 +947,172 @@ class _RoomScreenState extends State<RoomScreen> {
         color: Colors.white,
         onPressed: onPressed,
       ),
+    );
+  }
+}
+
+// Video Quality Dialog Widget
+class _VideoQualityDialog extends StatefulWidget {
+  final Function({
+    required String resolution,
+    required int width,
+    required int height,
+    required int maxBitrate,
+    required int maxFramerate,
+  }) onApply;
+
+  const _VideoQualityDialog({required this.onApply});
+
+  @override
+  State<_VideoQualityDialog> createState() => _VideoQualityDialogState();
+}
+
+class _VideoQualityDialogState extends State<_VideoQualityDialog> {
+  String _selectedPreset = '720p';
+  int _customWidth = 1280;
+  int _customHeight = 720;
+  int _maxBitrate = 1500;
+  int _maxFramerate = 30;
+
+  final Map<String, Map<String, int>> _presets = {
+    '360p': {'width': 640, 'height': 360, 'bitrate': 500, 'fps': 24},
+    '480p': {'width': 854, 'height': 480, 'bitrate': 800, 'fps': 30},
+    '720p': {'width': 1280, 'height': 720, 'bitrate': 1500, 'fps': 30},
+    '1080p': {'width': 1920, 'height': 1080, 'bitrate': 3000, 'fps': 30},
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _applyPreset(_selectedPreset);
+  }
+
+  void _applyPreset(String preset) {
+    final values = _presets[preset]!;
+    setState(() {
+      _selectedPreset = preset;
+      _customWidth = values['width']!;
+      _customHeight = values['height']!;
+      _maxBitrate = values['bitrate']!;
+      _maxFramerate = values['fps']!;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppTheme.darkBgSecondary,
+      title: const Text(
+        'Video Quality Settings',
+        style: TextStyle(color: Colors.white),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Preset Dropdown
+            const Text(
+              'Preset',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.darkBgTertiary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: DropdownButton<String>(
+                value: _selectedPreset,
+                isExpanded: true,
+                dropdownColor: AppTheme.darkBgTertiary,
+                style: const TextStyle(color: Colors.white),
+                underline: const SizedBox(),
+                items: _presets.keys.map((key) {
+                  final preset = _presets[key]!;
+                  return DropdownMenuItem(
+                    value: key,
+                    child: Text('$key (${preset['width']}x${preset['height']})'),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) _applyPreset(value);
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Resolution
+            Text(
+              'Resolution: ${_customWidth}x$_customHeight',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+
+            // Max Bitrate
+            Text(
+              'Max Bitrate: ${_maxBitrate} kbps',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            Slider(
+              value: _maxBitrate.toDouble(),
+              min: 300,
+              max: 5000,
+              divisions: 47,
+              activeColor: AppTheme.primaryGreen,
+              inactiveColor: AppTheme.darkBgTertiary,
+              onChanged: (value) {
+                setState(() {
+                  _maxBitrate = value.toInt();
+                });
+              },
+            ),
+            const SizedBox(height: 8),
+
+            // Max Framerate
+            Text(
+              'Max Framerate: $_maxFramerate fps',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            Slider(
+              value: _maxFramerate.toDouble(),
+              min: 15,
+              max: 60,
+              divisions: 9,
+              activeColor: AppTheme.primaryGreen,
+              inactiveColor: AppTheme.darkBgTertiary,
+              onChanged: (value) {
+                setState(() {
+                  _maxFramerate = value.toInt();
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            widget.onApply(
+              resolution: _selectedPreset,
+              width: _customWidth,
+              height: _customHeight,
+              maxBitrate: _maxBitrate,
+              maxFramerate: _maxFramerate,
+            );
+            Navigator.pop(context);
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+          child: const Text('Apply'),
+        ),
+      ],
     );
   }
 }
