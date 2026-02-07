@@ -18,6 +18,12 @@ const userSchema = new mongoose.Schema({
         minlength: [3, 'Username minimal 3 karakter'],
         maxlength: [20, 'Username maksimal 20 karakter']
     },
+    email: {
+        type: String,
+        sparse: true, // Allow null/undefined, but unique if exists
+        trim: true,
+        lowercase: true
+    },
     password: {
         type: String,
         required: [true, 'Password wajib diisi'],

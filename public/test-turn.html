@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TURN Server Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #4ec9b0; }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #2d2d2d;
+            border-left: 3px solid #4ec9b0;
+        }
+        .candidate {
+            padding: 10px;
+            margin: 5px 0;
+            background: #1e1e1e;
+            border-left: 3px solid #dcdcaa;
+        }
+        .host { border-left-color: #4ec9b0; }
+        .srflx { border-left-color: #569cd6; }
+        .relay { border-left-color: #ce9178; }
+        .success { color: #4ec9b0; }
+        .warning { color: #dcdcaa; }
+        .error { color: #f48771; }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover { background: #1177bb; }
+        #log { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>🧪 TURN Server Connection Test</h1>
+    <p>Test konektivitas TURN server untuk WebRTC</p>
+
+    <div class="test-section">
+        <h2>Configuration</h2>
+        <p><strong>TURN Server:</strong> turn.mikan.my.id</p>
+        <p><strong>Ports:</strong> 3478 (UDP), 80 (TCP), 5349 (TLS)</p>
+        <p><strong>Username:</strong> admin</p>
+        <p><strong>Credential:</strong> rahasia123</p>
+    </div>
+
+    <button onclick="testTurnServer()">🚀 Start Test</button>
+    <button onclick="clearLog()">🗑️ Clear Log</button>
+
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="results">
+            <p class="warning">⏳ Waiting for test...</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>ICE Candidates Generated</h2>
+        <div id="candidates">
+            <p class="warning">⏳ No candidates yet...</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Detailed Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { 
+                urls: 'turn:turn.mikan.my.id:3478',
+                username: 'admin',
+                credential: 'rahasia123'
+            },
+            { 
+                urls: 'turn:turn.mikan.my.id:80',
+                username: 'admin',
+                credential: 'rahasia123'
+            },
+            { 
+                urls: 'turns:turn.mikan.my.id:5349',
+                username: 'admin',
+                credential: 'rahasia123'
+            }
+        ];
+
+        let candidates = {
+            host: [],
+            srflx: [],
+            relay: []
+        };
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success';
+            logDiv.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('candidates').innerHTML = '<p class="warning">⏳ No candidates yet...</p>';
+            document.getElementById('results').innerHTML = '<p class="warning">⏳ Waiting for test...</p>';
+            candidates = { host: [], srflx: [], relay: [] };
+        }
+
+        async function testTurnServer() {
+            log('🚀 Starting TURN server test...', 'info');
+            clearLog();
+            
+            try {
+                // Create peer connection
+                const pc = new RTCPeerConnection({ iceServers });
+                
+                log('✅ RTCPeerConnection created', 'success');
+                log(`📡 ICE Servers configured: ${iceServers.length}`, 'info');
+
+                // Gather ICE candidates
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        const c = event.candidate;
+                        const parts = c.candidate.split(' ');
+                        const type = c.type || parts[7];
+                        
+                        log(`🧊 ICE Candidate: ${type}`, 'info');
+                        log(`   Protocol: ${c.protocol}`, 'info');
+                        log(`   Address: ${c.address || parts[4]}:${c.port || parts[5]}`, 'info');
+                        
+                        // Categorize
+                        if (type === 'host') {
+                            candidates.host.push(c);
+                        } else if (type === 'srflx') {
+                            candidates.srflx.push(c);
+                        } else if (type === 'relay') {
+                            candidates.relay.push(c);
+                        }
+                        
+                        updateCandidatesList();
+                    }
+                };
+
+                pc.onicegatheringstatechange = () => {
+                    log(`🔄 ICE Gathering State: ${pc.iceGatheringState}`, 'info');
+                    
+                    if (pc.iceGatheringState === 'complete') {
+                        log('✅ ICE Gathering Complete', 'success');
+                        showResults();
+                        
+                        // Cleanup
+                        setTimeout(() => {
+                            pc.close();
+                            log('🔒 RTCPeerConnection closed', 'info');
+                        }, 1000);
+                    }
+                };
+
+                // Create dummy data channel to trigger ICE gathering
+                pc.createDataChannel('test');
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                log('📤 Offer created and set as local description', 'success');
+                log('⏳ Gathering ICE candidates... (this may take up to 10 seconds)', 'warning');
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+                document.getElementById('results').innerHTML = `<p class="error">❌ Test Failed: ${error.message}</p>`;
+            }
+        }
+
+        function updateCandidatesList() {
+            const candidatesDiv = document.getElementById('candidates');
+            let html = '';
+            
+            if (candidates.host.length > 0) {
+                html += `<div class="candidate host">
+                    <strong>🟢 Host Candidates (${candidates.host.length}):</strong> Direct P2P connection<br>
+                    ${candidates.host.map(c => `${c.address}:${c.port} (${c.protocol})`).join('<br>')}
+                </div>`;
+            }
+            
+            if (candidates.srflx.length > 0) {
+                html += `<div class="candidate srflx">
+                    <strong>🔵 STUN Candidates (${candidates.srflx.length}):</strong> via STUN server<br>
+                    ${candidates.srflx.map(c => `${c.address}:${c.port} (${c.protocol})`).join('<br>')}
+                </div>`;
+            }
+            
+            if (candidates.relay.length > 0) {
+                html += `<div class="candidate relay">
+                    <strong>🟠 TURN Relay Candidates (${candidates.relay.length}):</strong> via TURN server<br>
+                    ${candidates.relay.map(c => `${c.address}:${c.port} (${c.protocol})`).join('<br>')}
+                </div>`;
+            }
+            
+            if (html === '') {
+                html = '<p class="warning">⏳ No candidates yet...</p>';
+            }
+            
+            candidatesDiv.innerHTML = html;
+        }
+
+        function showResults() {
+            const resultsDiv = document.getElementById('results');
+            let html = '<h3>📊 Test Summary</h3>';
+            
+            html += `<p>✅ Host Candidates: ${candidates.host.length} ${candidates.host.length > 0 ? '(Local network working)' : ''}</p>`;
+            html += `<p>${candidates.srflx.length > 0 ? '✅' : '⚠️'} STUN Candidates: ${candidates.srflx.length} ${candidates.srflx.length > 0 ? '(STUN server working)' : '(STUN server not responding)'}</p>`;
+            html += `<p class="${candidates.relay.length > 0 ? 'success' : 'error'}">${candidates.relay.length > 0 ? '✅' : '❌'} TURN Relay Candidates: ${candidates.relay.length} ${candidates.relay.length > 0 ? '(TURN server working!)' : '(TURN server NOT working!)'}</p>`;
+            
+            html += '<hr><h3>🔍 Diagnosis</h3>';
+            
+            if (candidates.relay.length > 0) {
+                html += '<p class="success">✅ <strong>TURN server is working correctly!</strong></p>';
+                html += '<p>The connection between web and mobile should work.</p>';
+            } else if (candidates.srflx.length > 0) {
+                html += '<p class="warning">⚠️ <strong>TURN server is NOT working</strong></p>';
+                html += '<p>STUN works, but TURN relay candidates not generated.</p>';
+                html += '<p><strong>Possible causes:</strong></p>';
+                html += '<ul>';
+                html += '<li>TURN server (Coturn) is not running on VPS</li>';
+                html += '<li>Port 3478, 80, or 5349 are blocked by firewall</li>';
+                html += '<li>Incorrect credentials (admin/rahasia123)</li>';
+                html += '<li>TURN server configuration error</li>';
+                html += '</ul>';
+                html += '<p><strong>Solution:</strong> SSH to VPS and check:</p>';
+                html += '<pre>sudo systemctl status coturn\nsudo netstat -tulpn | grep 3478</pre>';
+            } else {
+                html += '<p class="error">❌ <strong>Network connectivity issues</strong></p>';
+                html += '<p>Both STUN and TURN are not working.</p>';
+            }
+            
+            if (candidates.host.length > 0 && candidates.relay.length === 0) {
+                html += '<hr><p class="warning">💡 <strong>Workaround for local network:</strong></p>';
+                html += '<p>Since you have host candidates and devices are on the same network, try:</p>';
+                html += '<ol>';
+                html += '<li>Disable firewall temporarily on both devices</li>';
+                html += '<li>Check if antivirus is blocking WebRTC</li>';
+                html += '<li>Use <code>iceTransportPolicy: "all"</code> (already set)</li>';
+                html += '</ol>';
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

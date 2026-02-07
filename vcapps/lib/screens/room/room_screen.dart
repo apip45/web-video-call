@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../../core/services/api_service.dart';
+import 'package:permission_handler/permission_handler.dart';import 'dart:async';import '../../core/services/api_service.dart';
 import '../../core/services/webrtc_service.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -30,7 +29,23 @@ class _RoomScreenState extends State<RoomScreen> {
   bool _isMicEnabled = true;
   bool _isCameraEnabled = true;
   bool _showControls = true;
+  bool _showStats = false;
   String _remoteUsername = 'Menunggu...';
+  
+  // Remote media status
+  bool _isRemoteMuted = false;
+  bool _isRemoteCameraEnabled = true;
+  
+  // Connection stats
+  Timer? _statsTimer;
+  Timer? _controlsTimer;
+  Map<String, dynamic> _stats = {
+    'bitrate': '0',
+    'packetLoss': '0',
+    'rtt': 'N/A',
+    'resolution': 'N/A',
+    'fps': 0,
+  };
 
   @override
   void initState() {
@@ -40,6 +55,8 @@ class _RoomScreenState extends State<RoomScreen> {
 
   @override
   void dispose() {
+    _statsTimer?.cancel();
+    _controlsTimer?.cancel();
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     _webrtcService.dispose();
@@ -92,6 +109,23 @@ class _RoomScreenState extends State<RoomScreen> {
           setState(() {
             _isConnected = isConnected;
           });
+          
+          // Start stats collection when connected
+          if (isConnected && _statsTimer == null) {
+            _startStatsCollection();
+          } else if (!isConnected) {
+            _stopStatsCollection();
+          }
+        }
+      });
+
+      // Listen to remote media status
+      _webrtcService.remoteMediaStatus.listen((status) {
+        if (mounted) {
+          setState(() {
+            _isRemoteMuted = status['isMuted'] ?? false;
+            _isRemoteCameraEnabled = status['isCameraEnabled'] ?? true;
+          });
         }
       });
 
@@ -121,22 +155,69 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
-  void _toggleMicrophone() {
-    _webrtcService.toggleMicrophone();
+  Future<void> _toggleMicrophone() async {
+    final enabled = await _webrtcService.toggleMicrophone();
     setState(() {
-      _isMicEnabled = _webrtcService.isMicrophoneEnabled;
+      _isMicEnabled = enabled;
     });
   }
 
-  void _toggleCamera() {
-    _webrtcService.toggleCamera();
+  Future<void> _toggleCamera() async {
+    final enabled = await _webrtcService.toggleCamera();
     setState(() {
-      _isCameraEnabled = _webrtcService.isCameraEnabled;
+      _isCameraEnabled = enabled;
     });
   }
 
   void _switchCamera() {
     _webrtcService.switchCamera();
+  }
+
+  void _startStatsCollection() {
+    _statsTimer?.cancel();
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!_isConnected) {
+        timer.cancel();
+        return;
+      }
+      
+      final stats = await _webrtcService.getStats();
+      if (stats != null && mounted) {
+        setState(() {
+          _stats = stats;
+        });
+      }
+    });
+  }
+
+  void _stopStatsCollection() {
+    _statsTimer?.cancel();
+    _statsTimer = null;
+  }
+
+  void _toggleStats() {
+    setState(() {
+      _showStats = !_showStats;
+    });
+  }
+
+  void _resetControlsTimer() {
+    _controlsTimer?.cancel();
+    
+    if (!_showControls) {
+      setState(() {
+        _showControls = true;
+      });
+    }
+    
+    // Auto-hide controls after 3 seconds
+    _controlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
   }
 
   void _leaveRoom() {
@@ -200,71 +281,139 @@ class _RoomScreenState extends State<RoomScreen> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: () {
-          setState(() {
-            _showControls = !_showControls;
-          });
+          _resetControlsTimer();
         },
         child: Stack(
           children: [
             // Remote Video (Fullscreen)
             SizedBox.expand(
-              child: _remoteRenderer.srcObject != null &&
-                      _remoteRenderer.srcObject!.getTracks().isNotEmpty
-                  ? RTCVideoView(
-                      _remoteRenderer,
-                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
-                      mirror: false,
-                    )
-                  : Container(
-                      color: AppTheme.darkBgPrimary,
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen.withOpacity(0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.person,
-                                size: 48,
-                                color: AppTheme.primaryGreen,
-                              ),
+              child: Stack(
+                children: [
+                  _remoteRenderer.srcObject != null &&
+                          _remoteRenderer.srcObject!.getTracks().isNotEmpty
+                      ? RTCVideoView(
+                          _remoteRenderer,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                          mirror: false,
+                        )
+                      : Container(
+                          color: AppTheme.darkBgPrimary,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryGreen.withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.person,
+                                    size: 48,
+                                    color: AppTheme.primaryGreen,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _remoteUsername,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Room ID: ${widget.roomId}',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.7),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: _copyRoomId,
+                                  icon: const Icon(Icons.copy, size: 16),
+                                  label: const Text('Copy ID'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primaryGreen.withOpacity(0.2),
+                                    foregroundColor: AppTheme.primaryGreen,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _remoteUsername,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Room ID: ${widget.roomId}',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _copyRoomId,
-                              icon: const Icon(Icons.copy, size: 16),
-                              label: const Text('Copy ID'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryGreen.withOpacity(0.2),
-                                foregroundColor: AppTheme.primaryGreen,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
+                  
+                  // Remote media status indicators
+                  if (_isConnected)
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      child: Row(
+                        children: [
+                          // Remote camera status
+                          if (!_isRemoteCameraEnabled)
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.videocam_off,
+                                    color: Colors.red,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Kamera Off',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          // Remote mic status
+                          if (_isRemoteMuted)
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.mic_off,
+                                    color: Colors.red,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Muted',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     ),
+                ],
+              ),
             ),
 
             // Local Video (PIP - Picture in Picture)
@@ -323,14 +472,24 @@ class _RoomScreenState extends State<RoomScreen> {
                             color: Colors.black.withOpacity(0.6),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            'Anda',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Anda',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (!_isMicEnabled)
+                                const Icon(
+                                  Icons.mic_off,
+                                  color: Colors.red,
+                                  size: 12,
+                                ),
+                            ],
                           ),
                         ),
                       ),
@@ -475,6 +634,15 @@ class _RoomScreenState extends State<RoomScreen> {
                         backgroundColor: AppTheme.darkBgTertiary,
                       ),
                       
+                      // Stats toggle
+                      _buildControlButton(
+                        icon: Icons.analytics_outlined,
+                        onPressed: _toggleStats,
+                        backgroundColor: _showStats
+                            ? AppTheme.primaryGreen
+                            : AppTheme.darkBgTertiary,
+                      ),
+                      
                       // Leave room
                       _buildControlButton(
                         icon: Icons.call_end,
@@ -487,8 +655,83 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                 ),
               ),
+
+            // Stats Panel
+            if (_showStats && _isConnected)
+              Positioned(
+                bottom: MediaQuery.of(context).padding.bottom + 100,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppTheme.primaryGreen.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.analytics,
+                            color: AppTheme.primaryGreen,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Statistik Koneksi',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildStatRow('Bitrate', '${_stats['bitrate']} kbps'),
+                      _buildStatRow('Packet Loss', '${_stats['packetLoss']}%'),
+                      _buildStatRow('RTT', _stats['rtt']),
+                      _buildStatRow('Resolution', _stats['resolution']),
+                      _buildStatRow('FPS', '${_stats['fps']}'),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 14,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -9,6 +9,7 @@
 const Room = require('../models/Room');
 const User = require('../models/User');
 const Stats = require('../models/Stats');
+const jwt = require('jsonwebtoken');
 
 // Store for room cleanup timers
 const roomCleanupTimers = new Map();
@@ -27,19 +28,42 @@ const HEARTBEAT_TIMEOUT = 25000; // 25 seconds (2.5x interval)
  * @param {Server} io - Socket.IO server instance
  */
 const setupSocketHandlers = (io) => {
-    // Middleware untuk logging koneksi
+    // Middleware untuk autentikasi (support session dan JWT)
     io.use((socket, next) => {
         const session = socket.request.session;
+        const token = socket.handshake.auth.token;
+
+        // Coba autentikasi dengan session (web)
         if (session && session.userId) {
             socket.userId = session.userId;
             socket.username = session.displayName || session.username;
             socket.userRole = session.role;
-            console.log(`[Socket] 🔌 Connection authorized: ${socket.username} (${socket.userRole})`);
-            next();
-        } else {
-            console.log('[Socket] ⚠️ Unauthorized socket connection attempt');
-            next(new Error('Unauthorized'));
+            socket.authType = 'session';
+            console.log(`[Socket] 🔌 Connection authorized (session): ${socket.username} (${socket.userRole})`);
+            return next();
         }
+
+        // Coba autentikasi dengan JWT token (mobile)
+        if (token) {
+            try {
+                const decoded = jwt.verify(
+                    token, 
+                    process.env.SESSION_SECRET || 'your-secret-key'
+                );
+                socket.userId = decoded.userId;
+                socket.username = decoded.username;
+                socket.userRole = decoded.role;
+                socket.authType = 'jwt';
+                console.log(`[Socket] 🔌 Connection authorized (JWT): ${socket.username} (${socket.userRole})`);
+                return next();
+            } catch (error) {
+                console.log(`[Socket] ❌ Invalid JWT token: ${error.message}`);
+                return next(new Error('Invalid token'));
+            }
+        }
+
+        console.log('[Socket] ⚠️ Unauthorized socket connection attempt');
+        next(new Error('Unauthorized'));
     });
 
     io.on('connection', (socket) => {

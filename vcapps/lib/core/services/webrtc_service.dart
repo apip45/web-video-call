@@ -10,6 +10,8 @@ class WebRTCService {
       StreamController<MediaStream>.broadcast();
   final StreamController<bool> _connectionStateController =
       StreamController<bool>.broadcast();
+  final StreamController<Map<String, dynamic>> _remoteMediaStatusController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   IO.Socket? _socket;
   String? _roomId;
@@ -25,6 +27,7 @@ class WebRTCService {
 
   Stream<MediaStream> get remoteStream => _remoteStreamController.stream;
   Stream<bool> get connectionState => _connectionStateController.stream;
+  Stream<Map<String, dynamic>> get remoteMediaStatus => _remoteMediaStatusController.stream;
   MediaStream? get localStream => _localStream;
   bool get isConnected => _peerConnection?.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateConnected;
 
@@ -124,6 +127,15 @@ class WebRTCService {
     _socket?.on('user-left', (_) {
       print('User left');
       _handleUserLeft();
+    });
+
+    // Listen for remote media status changes
+    _socket?.on('media-status', (data) {
+      print('📡 Remote media status: $data');
+      _remoteMediaStatusController.add({
+        'isMuted': data['isMuted'] ?? false,
+        'isCameraEnabled': data['isCameraEnabled'] ?? true,
+      });
     });
 
     _socket?.on('disconnect', (reason) {
@@ -502,20 +514,6 @@ class WebRTCService {
     }
   }
 
-  Future<void> toggleMicrophone() async {
-    if (_localStream != null) {
-      final audioTrack = _localStream!.getAudioTracks().first;
-      audioTrack.enabled = !audioTrack.enabled;
-    }
-  }
-
-  Future<void> toggleCamera() async {
-    if (_localStream != null) {
-      final videoTrack = _localStream!.getVideoTracks().first;
-      videoTrack.enabled = !videoTrack.enabled;
-    }
-  }
-
   Future<void> switchCamera() async {
     if (_localStream != null) {
       final videoTrack = _localStream!.getVideoTracks().first;
@@ -535,6 +533,119 @@ class WebRTCService {
       return _localStream!.getVideoTracks().first.enabled;
     }
     return false;
+  }
+
+  // ========================================================================
+  // MEDIA CONTROLS
+  // ========================================================================
+
+  /// Toggle microphone mute
+  Future<bool> toggleMicrophone() async {
+    if (_localStream != null && _localStream!.getAudioTracks().isNotEmpty) {
+      final audioTrack = _localStream!.getAudioTracks().first;
+      audioTrack.enabled = !audioTrack.enabled;
+      print('🎤 Microphone: ${audioTrack.enabled ? 'ON' : 'MUTED'}');
+      
+      // Send media status to remote peer
+      _sendMediaStatus();
+      
+      return audioTrack.enabled;
+    }
+    return false;
+  }
+
+  /// Toggle camera on/off
+  Future<bool> toggleCamera() async {
+    if (_localStream != null && _localStream!.getVideoTracks().isNotEmpty) {
+      final videoTrack = _localStream!.getVideoTracks().first;
+      videoTrack.enabled = !videoTrack.enabled;
+      print('📹 Camera: ${videoTrack.enabled ? 'ON' : 'OFF'}');
+      
+      // Send media status to remote peer
+      _sendMediaStatus();
+      
+      return videoTrack.enabled;
+    }
+    return false;
+  }
+
+  /// Send media status to remote peer
+  void _sendMediaStatus() {
+    if (_socket == null || _remoteSocketId == null) return;
+
+    final status = {
+      'isMuted': !isMicrophoneEnabled,
+      'isCameraEnabled': isCameraEnabled,
+    };
+
+    _socket!.emit('media-status', {
+      'roomId': _roomId,
+      'targetSocketId': _remoteSocketId,
+      'status': status,
+    });
+  }
+
+  // ========================================================================
+  // CONNECTION STATS
+  // ========================================================================
+
+  /// Get connection statistics
+  Future<Map<String, dynamic>?> getStats() async {
+    if (_peerConnection == null) return null;
+
+    try {
+      final stats = await _peerConnection!.getStats();
+      
+      // Parse stats untuk mendapatkan informasi yang berguna
+      double? bitrate;
+      int? packetsLost;
+      int? packetsReceived;
+      double? rtt;
+      int? videoWidth;
+      int? videoHeight;
+      int? fps;
+      
+      for (var report in stats) {
+        final values = report.values;
+        
+        // Inbound RTP untuk video
+        if (values['type'] == 'inbound-rtp' && values['kind'] == 'video') {
+          packetsLost = values['packetsLost'] ?? 0;
+          packetsReceived = values['packetsReceived'] ?? 0;
+          videoWidth = values['frameWidth'];
+          videoHeight = values['frameHeight'];
+          fps = values['framesPerSecond'];
+          
+          // Calculate bitrate
+          final bytesReceived = values['bytesReceived'];
+          if (bytesReceived != null) {
+            bitrate = (bytesReceived * 8 / 1000).toDouble(); // kbps
+          }
+        }
+        
+        // Remote inbound untuk RTT
+        if (values['type'] == 'remote-inbound-rtp') {
+          rtt = values['roundTripTime']?.toDouble();
+        }
+      }
+      
+      return {
+        'bitrate': bitrate?.toStringAsFixed(0) ?? '0',
+        'packetsLost': packetsLost ?? 0,
+        'packetsReceived': packetsReceived ?? 0,
+        'packetLoss': packetsReceived != null && packetsReceived > 0
+            ? ((packetsLost ?? 0) / packetsReceived * 100).toStringAsFixed(1)
+            : '0',
+        'rtt': rtt != null ? '${(rtt * 1000).toStringAsFixed(0)}ms' : 'N/A',
+        'resolution': videoWidth != null && videoHeight != null
+            ? '${videoWidth}x$videoHeight'
+            : 'N/A',
+        'fps': fps ?? 0,
+      };
+    } catch (e) {
+      print('Error getting stats: $e');
+      return null;
+    }
   }
 
   Future<void> dispose() async {
@@ -559,6 +670,7 @@ class WebRTCService {
     // Close stream controllers
     await _remoteStreamController.close();
     await _connectionStateController.close();
+    await _remoteMediaStatusController.close();
 
     print('WebRTC service disposed');
   }

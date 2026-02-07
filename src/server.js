@@ -22,6 +22,7 @@ const connectDB = require('./config/database');
 const authRoutes = require('./routes/auth');
 const roomRoutes = require('./routes/room');
 const adminRoutes = require('./routes/admin');
+const apiRoutes = require('./routes/api'); // API untuk mobile app
 
 // Import middleware
 const { attachUserToLocals } = require('./middleware/auth');
@@ -97,6 +98,9 @@ app.use(attachUserToLocals);
 // =============================================================================
 // ROUTES
 // =============================================================================
+
+// API routes untuk mobile app (sebelum web routes)
+app.use('/api', apiRoutes);
 
 // Auth routes
 app.use('/', authRoutes);
