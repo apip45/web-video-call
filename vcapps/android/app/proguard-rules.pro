@@ -1,0 +1,5 @@
+-keep class io.flutter.plugin.** { *; }
+-keep class io.flutter.embedding.** { *; }
+-keep class com.cloudwebrtc.webrtc.** { *; }
+-keepattributes *Annotation*
+-dontwarn io.flutter.embedding.**
