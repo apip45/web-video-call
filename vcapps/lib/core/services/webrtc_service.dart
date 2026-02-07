@@ -127,12 +127,26 @@ class WebRTCService {
     });
 
     _socket?.on('answer', (data) async {
-      print('Received answer');
+      print('📨 Received answer from ${data['senderSocketId']}');
+
+      // Save remote socket ID if not already set
+      if (_remoteSocketId == null) {
+        _remoteSocketId = data['senderSocketId'];
+        print('Remote socket ID saved: $_remoteSocketId');
+      }
+
       await _handleAnswer(data);
     });
 
     _socket?.on('ice-candidate', (data) async {
-      print('Received ICE candidate');
+      print('📨 Received ICE candidate from ${data['senderSocketId']}');
+
+      // Save remote socket ID if not already set
+      if (_remoteSocketId == null && data['senderSocketId'] != null) {
+        _remoteSocketId = data['senderSocketId'];
+        print('Remote socket ID saved from ICE candidate: $_remoteSocketId');
+      }
+
       await _handleIceCandidate(data);
     });
 
@@ -144,6 +158,13 @@ class WebRTCService {
     // Listen for remote media status changes
     _socket?.on('media-status', (data) {
       print('📡 Remote media status: $data');
+
+      // Save remote socket ID if not already set (especially useful for admin)
+      if (_remoteSocketId == null && data['socketId'] != null) {
+        _remoteSocketId = data['socketId'];
+        print('Remote socket ID saved from media status: $_remoteSocketId');
+      }
+
       _remoteMediaStatusController.add({
         'isMuted': data['isMuted'] ?? false,
         'isCameraEnabled': data['isCameraEnabled'] ?? true,
@@ -372,6 +393,11 @@ class WebRTCService {
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           print('✅ Connection established - applying bitrate constraint');
           _applyBitrateConstraint(2500); // 2.5 Mbps for good quality
+
+          // Send media status to newly connected peer
+          // This ensures the remote peer knows our current media state
+          _sendMediaStatus();
+          print('📤 Sent initial media status to connected peer');
         }
 
         // Log ICE connection issues
@@ -646,17 +672,24 @@ class WebRTCService {
 
   /// Send media status to remote peer
   void _sendMediaStatus() {
-    if (_socket == null || _remoteSocketId == null) return;
+    if (_socket == null || _roomId == null) {
+      print('⚠️ Cannot send media status: socket or roomId is null');
+      return;
+    }
 
+    final videoTrack = _localStream?.getVideoTracks().firstOrNull;
     final status = {
       'isMuted': !isMicrophoneEnabled,
-      'isCameraEnabled': isCameraEnabled,
+      'isCameraHidden': false, // App always shows camera (no hide feature)
+      'isCameraTrackEnabled': videoTrack?.enabled ?? false,
     };
 
+    print('📤 Sending media status: $status');
     _socket!.emit('media-status', {
       'roomId': _roomId,
-      'targetSocketId': _remoteSocketId,
-      'status': status,
+      'isMuted': status['isMuted'],
+      'isCameraHidden': status['isCameraHidden'],
+      'isCameraTrackEnabled': status['isCameraTrackEnabled'],
     });
   }
 
