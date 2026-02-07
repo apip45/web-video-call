@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:permission_handler/permission_handler.dart';import 'dart:async';import '../../core/services/api_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
+import '../../core/services/api_service.dart';
 import '../../core/services/webrtc_service.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -9,11 +11,7 @@ class RoomScreen extends StatefulWidget {
   final String roomId;
   final String? roomName;
 
-  const RoomScreen({
-    super.key,
-    required this.roomId,
-    this.roomName,
-  });
+  const RoomScreen({super.key, required this.roomId, this.roomName});
 
   @override
   State<RoomScreen> createState() => _RoomScreenState();
@@ -33,11 +31,11 @@ class _RoomScreenState extends State<RoomScreen> {
   bool _showStats = false;
   bool _isRemoteBlank = false; // Admin: blank remote video
   String _remoteUsername = 'Menunggu...';
-  
+
   // Remote media status
   bool _isRemoteMuted = false;
   bool _isRemoteCameraEnabled = true;
-  
+
   // Connection stats
   Timer? _statsTimer;
   Timer? _controlsTimer;
@@ -91,8 +89,18 @@ class _RoomScreenState extends State<RoomScreen> {
         userRole: userData['role'] ?? 'user',
       );
 
-      // Set local stream
-      _localRenderer.srcObject = _webrtcService.localStream;
+      // Set initial local stream
+      _localRenderer.srcObject = _webrtcService.localStreamSnapshot;
+
+      // Listen to local stream changes (e.g., quality changes)
+      _webrtcService.localStream.listen((stream) {
+        if (mounted) {
+          setState(() {
+            _localRenderer.srcObject = stream;
+          });
+          print('📹 Local stream updated in UI');
+        }
+      });
 
       // Listen to remote stream
       _webrtcService.remoteStream.listen((stream) {
@@ -112,7 +120,7 @@ class _RoomScreenState extends State<RoomScreen> {
           setState(() {
             _isConnected = isConnected;
           });
-          
+
           // Start stats collection when connected
           if (isConnected && _statsTimer == null) {
             _startStatsCollection();
@@ -209,7 +217,11 @@ class _RoomScreenState extends State<RoomScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_isRemoteBlank ? 'Remote video di-blank' : 'Remote video ditampilkan'),
+          content: Text(
+            _isRemoteBlank
+                ? 'Remote video di-blank'
+                : 'Remote video ditampilkan',
+          ),
           duration: const Duration(seconds: 1),
         ),
       );
@@ -221,9 +233,8 @@ class _RoomScreenState extends State<RoomScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => _VideoQualityDialog(
-        onApply: _adminChangeVideoQuality,
-      ),
+      builder: (context) =>
+          _VideoQualityDialog(onApply: _adminChangeVideoQuality),
     );
   }
 
@@ -244,7 +255,9 @@ class _RoomScreenState extends State<RoomScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Menerapkan $resolution (${width}x$height, ${maxBitrate}kbps, ${maxFramerate}fps)'),
+        content: Text(
+          'Menerapkan $resolution (${width}x$height, ${maxBitrate}kbps, ${maxFramerate}fps)',
+        ),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -257,7 +270,7 @@ class _RoomScreenState extends State<RoomScreen> {
         timer.cancel();
         return;
       }
-      
+
       final stats = await _webrtcService.getStats();
       if (stats != null && mounted) {
         setState(() {
@@ -280,13 +293,13 @@ class _RoomScreenState extends State<RoomScreen> {
 
   void _resetControlsTimer() {
     _controlsTimer?.cancel();
-    
+
     if (!_showControls) {
       setState(() {
         _showControls = true;
       });
     }
-    
+
     // Auto-hide controls after 3 seconds
     _controlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
@@ -371,7 +384,8 @@ class _RoomScreenState extends State<RoomScreen> {
                           _remoteRenderer.srcObject!.getTracks().isNotEmpty
                       ? RTCVideoView(
                           _remoteRenderer,
-                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                          objectFit: RTCVideoViewObjectFit
+                              .RTCVideoViewObjectFitContain,
                           mirror: false,
                         )
                       : Container(
@@ -384,7 +398,9 @@ class _RoomScreenState extends State<RoomScreen> {
                                   width: 80,
                                   height: 80,
                                   decoration: BoxDecoration(
-                                    color: AppTheme.primaryGreen.withOpacity(0.2),
+                                    color: AppTheme.primaryGreen.withOpacity(
+                                      0.2,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
@@ -416,7 +432,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                   icon: const Icon(Icons.copy, size: 16),
                                   label: const Text('Copy ID'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryGreen.withOpacity(0.2),
+                                    backgroundColor: AppTheme.primaryGreen
+                                        .withOpacity(0.2),
                                     foregroundColor: AppTheme.primaryGreen,
                                   ),
                                 ),
@@ -424,7 +441,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             ),
                           ),
                         ),
-                  
+
                   // Blank overlay (Admin only)
                   if (_isRemoteBlank && _webrtcService.isAdmin)
                     Container(
@@ -450,7 +467,7 @@ class _RoomScreenState extends State<RoomScreen> {
                         ),
                       ),
                     ),
-                  
+
                   // Remote media status indicators
                   if (_isConnected)
                     Positioned(
@@ -530,10 +547,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 decoration: BoxDecoration(
                   color: Colors.black,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppTheme.primaryGreen,
-                    width: 2,
-                  ),
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.5),
@@ -549,7 +563,8 @@ class _RoomScreenState extends State<RoomScreen> {
                       // Always render video but overlay if visual off
                       RTCVideoView(
                         _localRenderer,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        objectFit:
+                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                         mirror: true,
                       ),
                       // Visual overlay (camera actually on but hidden)
@@ -740,7 +755,9 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                               const SizedBox(width: 8),
                               _buildSmallControlButton(
-                                icon: _isRemoteBlank ? Icons.visibility : Icons.visibility_off,
+                                icon: _isRemoteBlank
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
                                 label: 'Blank',
                                 onPressed: _toggleBlankRemote,
                                 backgroundColor: _isRemoteBlank
@@ -750,7 +767,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             ],
                           ),
                         ),
-                      
+
                       // Main controls
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -763,23 +780,25 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ? AppTheme.darkBgTertiary
                                 : AppTheme.errorColor,
                           ),
-                          
+
                           // Camera toggle
                           _buildControlButton(
-                            icon: !_isCameraVisuallyOff ? Icons.videocam : Icons.videocam_off,
+                            icon: !_isCameraVisuallyOff
+                                ? Icons.videocam
+                                : Icons.videocam_off,
                             onPressed: _toggleCamera,
                             backgroundColor: !_isCameraVisuallyOff
                                 ? AppTheme.darkBgTertiary
                                 : AppTheme.errorColor,
                           ),
-                          
+
                           // Switch camera
                           _buildControlButton(
                             icon: Icons.flip_camera_ios,
                             onPressed: _switchCamera,
                             backgroundColor: AppTheme.darkBgTertiary,
                           ),
-                          
+
                           // Stats toggle
                           _buildControlButton(
                             icon: Icons.analytics_outlined,
@@ -788,7 +807,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ? AppTheme.primaryGreen
                                 : AppTheme.darkBgTertiary,
                           ),
-                          
+
                           // Leave room
                           _buildControlButton(
                             icon: Icons.call_end,
@@ -959,7 +978,8 @@ class _VideoQualityDialog extends StatefulWidget {
     required int height,
     required int maxBitrate,
     required int maxFramerate,
-  }) onApply;
+  })
+  onApply;
 
   const _VideoQualityDialog({required this.onApply});
 
@@ -1033,7 +1053,9 @@ class _VideoQualityDialogState extends State<_VideoQualityDialog> {
                   final preset = _presets[key]!;
                   return DropdownMenuItem(
                     value: key,
-                    child: Text('$key (${preset['width']}x${preset['height']})'),
+                    child: Text(
+                      '$key (${preset['width']}x${preset['height']})',
+                    ),
                   );
                 }).toList(),
                 onChanged: (value) {
