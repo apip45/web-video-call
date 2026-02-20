@@ -45,6 +45,9 @@ class WebRTCHandler {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 2000;
+        this.reconnectTimer = null;       // Pending reconnect timer ID
+        this.disconnectWatchdog = null;   // Watchdog for transient 'disconnected' state
+        this.DISCONNECT_WATCHDOG_TIMEOUT = 5000; // 5s grace before treating disconnected as failed
 
         // Timeouts
         this.iceGatheringTimeout = null;
@@ -769,6 +772,8 @@ class WebRTCHandler {
             case 'completed':
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
+                this.cancelReconnect();           // Cancel any pending reconnect timer
+                this.cancelDisconnectWatchdog();  // Cancel transient-disconnect watchdog
                 console.log('[WebRTC] ✅ Connection established');
                 
                 // Log ICE candidate yang digunakan untuk debugging
@@ -783,17 +788,23 @@ class WebRTCHandler {
                 break;
 
             case 'disconnected':
-                console.warn('[WebRTC] ⚠️ Connection disconnected');
-                this.scheduleReconnect();
+                // ICE 'disconnected' is often transient (network blip, browser tab switch).
+                // DON'T schedule reconnect immediately — start a watchdog instead.
+                // If the connection doesn't self-heal within the grace period, then reconnect.
+                console.warn('[WebRTC] ⚠️ Connection disconnected - starting watchdog');
+                this.startDisconnectWatchdog();
                 break;
 
             case 'failed':
+                // ICE 'failed' is definitive — schedule reconnect right away.
                 console.error('[WebRTC] ❌ Connection failed');
+                this.cancelDisconnectWatchdog();
                 this.scheduleReconnect();
                 break;
 
             case 'closed':
                 this.isConnected = false;
+                this.cancelDisconnectWatchdog();
                 console.log('[WebRTC] 🔒 Connection closed');
                 break;
         }
@@ -1029,6 +1040,48 @@ class WebRTCHandler {
      */
 
     /**
+     * Cancel any pending reconnect timer
+     */
+    cancelReconnect() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+            console.log('[WebRTC] 🚫 Pending reconnect cancelled');
+        }
+    }
+
+    /**
+     * Start watchdog for transient 'disconnected' state.
+     * If connection hasn't recovered after grace period, trigger reconnect.
+     */
+    startDisconnectWatchdog() {
+        this.cancelDisconnectWatchdog();
+        this.disconnectWatchdog = setTimeout(() => {
+            this.disconnectWatchdog = null;
+            if (!this.peerConnection) return; // Already cleaned up
+            const iceState = this.peerConnection.iceConnectionState;
+            const connState = this.peerConnection.connectionState;
+            if (iceState === 'disconnected' || iceState === 'failed' ||
+                connState === 'disconnected' || connState === 'failed') {
+                console.warn('[WebRTC] ⚠️ Disconnect watchdog triggered — connection did not self-heal, scheduling reconnect');
+                this.scheduleReconnect();
+            } else {
+                console.log(`[WebRTC] ✅ Disconnect watchdog: connection self-healed (${iceState}/${connState})`);
+            }
+        }, this.DISCONNECT_WATCHDOG_TIMEOUT);
+    }
+
+    /**
+     * Cancel disconnect watchdog timer
+     */
+    cancelDisconnectWatchdog() {
+        if (this.disconnectWatchdog) {
+            clearTimeout(this.disconnectWatchdog);
+            this.disconnectWatchdog = null;
+        }
+    }
+
+    /**
      * Schedule reconnection attempt
      */
     scheduleReconnect() {
@@ -1039,23 +1092,39 @@ class WebRTCHandler {
         }
 
         this.reconnectAttempts++;
-        console.log(`[WebRTC] 🔄 Scheduling reconnect (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        const delay = this.reconnectDelay * this.reconnectAttempts;
+        console.log(`[WebRTC] 🔄 Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
-        setTimeout(() => {
+        // Store timer ID so it can be cancelled if peer-rejoins via user-joined
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
             this.reconnect();
-        }, this.reconnectDelay * this.reconnectAttempts);
+        }, delay);
     }
 
     /**
      * Attempt to reconnect
      */
     async reconnect() {
+        // Guard: abort if connection already recovered
+        if (this.isConnected) {
+            console.log('[WebRTC] ✋ Reconnect aborted — already connected');
+            return;
+        }
+        // Guard: abort if a new connection is already being negotiated
+        if (this.peerConnection &&
+            (this.peerConnection.connectionState === 'connected' ||
+             this.peerConnection.connectionState === 'connecting')) {
+            console.log('[WebRTC] ✋ Reconnect aborted — connection in progress');
+            return;
+        }
+
         console.log(`[WebRTC] 🔄 Attempting reconnect...`);
 
-        // Close existing connection
+        // Close stale connection before requesting new one
         this.closePeerConnection();
 
-        // Request reconnection from server
+        // Request reconnection from server — server will forward to peer
         this.socket.emit('reconnect-request', {
             roomId: this.roomId,
             attemptNumber: this.reconnectAttempts
@@ -1063,13 +1132,18 @@ class WebRTCHandler {
     }
 
     /**
-     * Handle reconnection with peer
+     * Handle reconnection with peer (called when server forwards reconnect-peer)
      */
     async handleReconnectPeer(socketId, username) {
-        console.log(`[WebRTC] 🔄 Reconnecting with peer: ${username}`);
+        console.log(`[WebRTC] 🔄 Reconnecting with peer: ${username} (${socketId})`);
         
-        // Create new connection and send offer
-        this.createPeerConnection();
+        // MUST close existing connection before starting fresh renegotiation
+        this.closePeerConnection();
+        
+        // Small delay for cleanup to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // createOffer will create peer connection if needed
         await this.createOffer(socketId);
     }
 
@@ -1183,6 +1257,10 @@ class WebRTCHandler {
         // Clear all timeouts first
         this.clearConnectionTimeouts();
         
+        // Cancel any pending reconnect timers to avoid interfering with new connections
+        this.cancelReconnect();
+        this.cancelDisconnectWatchdog();
+        
         if (this.peerConnection) {
             // Remove event listeners to prevent memory leaks
             this.peerConnection.onicecandidate = null;
@@ -1220,8 +1298,10 @@ class WebRTCHandler {
     cleanup() {
         console.log('[WebRTC] 🧹 Cleaning up...');
         
-        // Clear all timeouts
+        // Cancel all pending timers
         this.clearConnectionTimeouts();
+        this.cancelReconnect();
+        this.cancelDisconnectWatchdog();
         
         // Cleanup based on mode
         if (this.mode === 'sfu') {

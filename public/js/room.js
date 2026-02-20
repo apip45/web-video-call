@@ -17,6 +17,7 @@
     let webrtc = null;
     let mySocketId = null;
     let remoteSocketId = null; // Socket ID of the remote user
+    let remoteUserRole = null; // Role of the remote user ('admin' or 'user')
     let isFullscreen = false;
     let isPipHidden = false;
     let isVideoHidden = false; // For non-admin visual state
@@ -142,6 +143,12 @@
 
         // Media status
         socket.on('media-status', handleRemoteMediaStatus);
+
+        // Media sync - peer requests we send our current media state
+        socket.on('media-sync-requested', () => {
+            console.log('[Room] 🔄 Media sync requested by peer - sending our status');
+            if (webrtc) webrtc.sendMediaStatus();
+        });
 
         // Admin camera control command
         socket.on('admin-camera-command', handleAdminCameraCommand);
@@ -297,6 +304,15 @@
                 console.log('[Room] 🔄 Closing stale peer connection');
                 webrtc.closePeerConnection();
             }
+
+            // If server told us who is already in the room (reconnect scenario),
+            // pre-populate remoteSocketId and show correct admin controls
+            if (data.existingParticipant && data.existingParticipant.socketId) {
+                remoteSocketId = data.existingParticipant.socketId;
+                remoteUserRole = data.existingParticipant.role;
+                console.log(`[Room] 📡 Pre-populated remote info from room-joined: ${remoteSocketId} (${remoteUserRole})`);
+                updateAdminControlsVisibility();
+            }
         }
     }
     
@@ -349,27 +365,19 @@
         console.log(`[Room] 👤 User joined: ${data.username} (${data.socketId}) - role: ${data.userRole}`);
         showToast(`${data.username} bergabung`, 'success');
 
-        // Store remote socket ID for admin controls
+        // Cancel any pending reconnect that was scheduled due to ICE failure.
+        // The peer has rejoined - a fresh offer/answer will re-establish everything.
+        if (webrtc) webrtc.cancelReconnect();
+
+        // Store remote socket ID and role for admin controls
         remoteSocketId = data.socketId;
+        remoteUserRole = data.userRole;
 
         // Reset admin camera control state for new user
         isUserCameraDisabled = false;
 
-        // Show admin controls if admin and user is not admin
-        if (ROOM_DATA.isAdmin && data.userRole === 'user') {
-            const userCameraBtn = document.getElementById('userCameraBtn');
-            if (userCameraBtn) {
-                userCameraBtn.style.display = 'flex';
-                // Reset button to default state
-                userCameraBtn.classList.remove('active');
-                userCameraBtn.title = 'Nonaktifkan kamera user';
-            }
-            
-            const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
-            if (switchUserCameraBtn) {
-                switchUserCameraBtn.style.display = 'flex';
-            }
-        }
+        // Show / hide admin controls based on who just joined
+        updateAdminControlsVisibility();
 
         // Update remote username display
         elements.remoteUsername.textContent = data.username;
@@ -398,23 +406,24 @@
         console.log(`[Room] 👋 User left: ${data.username}`);
         showToast(`${data.username} keluar`, 'info');
 
+        // Cancel any pending reconnect timers — peer has disconnected intentionally,
+        // a new user-joined will trigger fresh renegotiation.
+        if (webrtc) webrtc.cancelReconnect();
+
         // Hide admin controls and reset state
+        remoteSocketId = null;
+        remoteUserRole = null;
+        updateAdminControlsVisibility();
+
+        // Also clear left-over active/disabled class from user camera button
         const userCameraBtn = document.getElementById('userCameraBtn');
         if (userCameraBtn) {
-            userCameraBtn.style.display = 'none';
             userCameraBtn.classList.remove('active', 'camera-disabled');
+            userCameraBtn.title = 'Nonaktifkan kamera user';
         }
         
-        const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
-        if (switchUserCameraBtn) {
-            switchUserCameraBtn.style.display = 'none';
-        }
-
         // Reset admin camera control state
         isUserCameraDisabled = false;
-
-        // Reset remote socket ID
-        remoteSocketId = null;
 
         // Reset remote video
         elements.remoteVideo.srcObject = null;
@@ -432,8 +441,15 @@
     }
 
     async function handleOffer(data) {
-        console.log(`[Room] 📥 Received offer from: ${data.senderUsername}`);
+        console.log(`[Room] 📥 Received offer from: ${data.senderUsername} (${data.senderSocketId})`);
+        
+        // CRITICAL: Update remoteSocketId from offer — this handles the reconnect scenario
+        // where WE are the rejoining side and the staying peer sends us an offer first.
+        // Without this, admin commands would fail because remoteSocketId stays null.
+        remoteSocketId = data.senderSocketId;
+        remoteUserRole = data.senderRole || null;
         elements.remoteUsername.textContent = data.senderUsername;
+        updateAdminControlsVisibility();
         
         // Close any existing peer connection before handling new offer
         if (webrtc.peerConnection) {
@@ -447,7 +463,13 @@
     }
 
     function handleAnswer(data) {
-        console.log(`[Room] 📥 Received answer from: ${data.senderUsername}`);
+        console.log(`[Room] 📥 Received answer from: ${data.senderUsername} (${data.senderSocketId})`);
+        // Keep remoteSocketId fresh — answer carries the answerer's socket ID
+        if (data.senderSocketId && !remoteSocketId) {
+            remoteSocketId = data.senderSocketId;
+            console.log(`[Room] 📡 Set remoteSocketId from answer: ${remoteSocketId}`);
+            updateAdminControlsVisibility();
+        }
         webrtc.handleAnswer(data.answer, data.senderSocketId);
     }
 
@@ -458,10 +480,16 @@
     function handleRemoteMediaStatus(data) {
         console.log(`[Room] 📡 Remote media status from ${data.username} (${data.userRole}): muted=${data.isMuted}, cameraHidden=${data.isCameraHidden}, trackEnabled=${data.isCameraTrackEnabled}`);
         
-        // Store remote socket ID if available
-        if (data.socketId && ROOM_DATA.isAdmin && data.userRole === 'user') {
-            remoteSocketId = data.socketId;
-            console.log(`[Room] 📡 Updated remoteSocketId from media status: ${remoteSocketId}`);
+        // Store remote socket ID and role if available (keeps remoteSocketId always fresh)
+        if (data.socketId) {
+            if (!remoteSocketId) {
+                remoteSocketId = data.socketId;
+                console.log(`[Room] 📡 Set remoteSocketId from media status: ${remoteSocketId}`);
+            }
+            if (!remoteUserRole) {
+                remoteUserRole = data.userRole;
+                updateAdminControlsVisibility();
+            }
         }
         
         // Update mute indicator
@@ -629,6 +657,38 @@
     // CONNECTION STATE HANDLERS
     // ==========================================================================
 
+    /**
+     * Update visibility of admin control buttons based on remoteUserRole.
+     * Called whenever remoteSocketId or remoteUserRole changes.
+     */
+    function updateAdminControlsVisibility() {
+        const userCameraBtn = document.getElementById('userCameraBtn');
+        const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
+
+        const shouldShow = ROOM_DATA.isAdmin && remoteUserRole === 'user' && !!remoteSocketId;
+
+        if (userCameraBtn) {
+            userCameraBtn.style.display = shouldShow ? 'flex' : 'none';
+            if (shouldShow) {
+                // Sync button appearance with current isUserCameraDisabled state
+                if (isUserCameraDisabled) {
+                    userCameraBtn.classList.add('active');
+                    userCameraBtn.title = 'Aktifkan kamera user';
+                } else {
+                    userCameraBtn.classList.remove('active');
+                    userCameraBtn.title = 'Nonaktifkan kamera user';
+                }
+            }
+        }
+        if (switchUserCameraBtn) {
+            switchUserCameraBtn.style.display = shouldShow ? 'flex' : 'none';
+        }
+
+        if (shouldShow) {
+            console.log(`[Room] 👑 Admin controls shown for user: ${remoteSocketId}`);
+        }
+    }
+
     function handleConnectionState(state) {
         switch (state) {
             case 'checking':
@@ -639,6 +699,12 @@
                 hideConnectionStatus();
                 hideWaitingState();
                 showToast('Terhubung!', 'success');
+                // Ask peer to (re-)send their media status so we always have fresh state.
+                // This is crucial after reconnect so both sides know each other's camera/mic state.
+                setTimeout(() => {
+                    socket.emit('request-media-sync', { roomId: ROOM_DATA.roomId });
+                    console.log('[Room] 🔄 Requested media sync from peer after connection');
+                }, 1000);
                 break;
             case 'disconnected':
                 showConnectionStatus('Koneksi terputus, mencoba kembali...');

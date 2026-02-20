@@ -185,7 +185,15 @@ const setupSocketHandlers = (io) => {
                     participantCount: room.participants.length,
                     isInitiator: !otherParticipant,
                     userRole: socket.userRole,
-                    isAdmin: socket.userRole === 'admin'
+                    isAdmin: socket.userRole === 'admin',
+                    // Tell the joining user about the already-present participant.
+                    // This is critical for reconnect: when the rejoining user receives
+                    // an offer from the staying peer, they already know who to target
+                    // for admin commands (remoteSocketId) without waiting for media-status.
+                    existingParticipant: otherParticipant ? {
+                        socketId: otherParticipant.socketId,
+                        role: otherParticipant.role
+                    } : null
                 });
 
                 // Notify other participant
@@ -213,7 +221,8 @@ const setupSocketHandlers = (io) => {
                 const { roomId, offer, targetSocketId } = data;
                 console.log(`[Socket] 📤 Offer from ${socket.username} to ${targetSocketId}`);
 
-                // Kirim offer ke target
+                // Forward offer to target, including sender's role so the receiver
+                // can immediately set remoteUserRole and show correct admin controls
                 io.to(targetSocketId).emit('offer', {
                     offer: offer,
                     senderSocketId: socket.id,
@@ -546,6 +555,32 @@ const setupSocketHandlers = (io) => {
                 }
             } catch (error) {
                 console.error(`[Socket] ❌ Reconnect request error: ${error.message}`);
+            }
+        });
+
+        // =========================================================================
+        // MEDIA SYNC REQUEST
+        // =========================================================================
+        // Peer asks us to (re-)broadcast our media status to them.
+        // Used after reconnect so both sides exchange fresh camera/mic state.
+        socket.on('request-media-sync', async (data) => {
+            try {
+                const { roomId } = data;
+                console.log(`[Socket] 🔄 Media sync request from ${socket.username} in room ${roomId}`);
+
+                const room = await Room.findOne({ roomId: roomId, isActive: true });
+                if (room) {
+                    const otherParticipant = room.getOtherParticipant(socket.id);
+                    if (otherParticipant) {
+                        // Tell the other participant to send their media status
+                        io.to(otherParticipant.socketId).emit('media-sync-requested', {
+                            requesterSocketId: socket.id
+                        });
+                        console.log(`[Socket] 📡 Forwarded media sync request to ${otherParticipant.socketId}`);
+                    }
+                }
+            } catch (error) {
+                console.error(`[Socket] ❌ Media sync request error: ${error.message}`);
             }
         });
 
