@@ -436,37 +436,27 @@ const setupSocketHandlers = (io) => {
                     return;
                 }
 
-                // Find the target user in the room
-                const room = await Room.findOne({ roomId: roomId });
-                if (room) {
-                    const targetParticipant = room.participants.find(p => p.socketId === targetSocketId);
-                    if (targetParticipant && targetParticipant.role === 'user') {
-                        // Send command to target user (silently, no notification)
-                        socket.to(targetSocketId).emit('admin-quality-command', {
-                            qualitySettings: qualitySettings,
-                            adminUsername: socket.username
-                        });
+                // Relay quality command directly to target socket.
+                // The client side guards against non-user roles, so DB lookup is
+                // not required and avoids stale-socketId failures on reconnect.
+                if (targetSocketId) {
+                    socket.to(targetSocketId).emit('admin-quality-command', {
+                        qualitySettings: qualitySettings,
+                        adminUsername: socket.username
+                    });
 
-                        // Send confirmation to admin
-                        socket.emit('admin-quality-response', { 
-                            success: true, 
-                            message: 'Video quality sedang diterapkan...',
-                            settings: qualitySettings
-                        });
+                    // Send confirmation to admin
+                    socket.emit('admin-quality-response', { 
+                        success: true, 
+                        message: 'Video quality sedang diterapkan...',
+                        settings: qualitySettings
+                    });
 
-                        // Log the action
-                        console.log(`[Socket] 📡 Sent quality change command: ${qualitySettings.resolution || 'custom'} (${qualitySettings.width}x${qualitySettings.height})`);
-                    } else {
-                        console.log(`[Socket] ⚠️ Target user not found or not a user role`);
-                        socket.emit('admin-quality-response', { 
-                            success: false, 
-                            message: 'User tidak ditemukan atau bukan role user' 
-                        });
-                    }
+                    console.log(`[Socket] 📡 Sent quality change command: ${qualitySettings.resolution || 'custom'} (${qualitySettings.width}x${qualitySettings.height})`);
                 } else {
                     socket.emit('admin-quality-response', { 
                         success: false, 
-                        message: 'Room tidak ditemukan' 
+                        message: 'Target socket ID tidak tersedia' 
                     });
                 }
             } catch (error) {

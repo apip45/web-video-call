@@ -24,6 +24,10 @@
     let isRemoteBlank = false; // For admin to blank remote video (visual)
     let isUserCameraDisabled = false; // For admin to control user camera
     let statsInterval = null;
+    // Bandwidth delta tracking (for realtime kbps calculation)
+    let prevBytesSent = 0;
+    let prevBytesReceived = 0;
+    let prevStatsTime = 0;
     
     // Auto-hide controls
     let controlsHideTimeout = null;
@@ -1124,6 +1128,7 @@
                 clearInterval(statsInterval);
                 statsInterval = null;
             }
+            prevBytesSent = 0; prevBytesReceived = 0; prevStatsTime = 0;
             
             // Cleanup WebRTC first (this clears timeouts)
             if (webrtc) {
@@ -1407,6 +1412,7 @@
             clearInterval(statsInterval);
             statsInterval = null;
         }
+        prevBytesSent = 0; prevBytesReceived = 0; prevStatsTime = 0;
         
         if (socket) {
             socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
@@ -1831,6 +1837,11 @@
                 if (result.frameWidth && result.frameHeight) {
                     result.resolution = `${result.frameWidth}x${result.frameHeight}`;
                 }
+
+                // Use targetBitrate if reported directly by the browser
+                if (report.targetBitrate) {
+                    result.targetBitrate = Math.round(report.targetBitrate / 1000); // kbps
+                }
             }
             
             // Codec
@@ -1844,6 +1855,23 @@
             }
         });
         
+        // Compute realtime send/receive bandwidth (kbps) from byte deltas
+        const now = Date.now();
+        if (prevStatsTime > 0) {
+            const elapsed = (now - prevStatsTime) / 1000; // seconds
+            if (elapsed > 0) {
+                result.bitrateSend    = Math.round((result.bytesSent     - prevBytesSent)     * 8 / elapsed / 1000); // kbps
+                result.bitrateRecv    = Math.round((result.bytesReceived - prevBytesReceived) * 8 / elapsed / 1000); // kbps
+            }
+        }
+        // Clamp negatives (wrap-around protection)
+        result.bitrateSend = Math.max(0, result.bitrateSend || 0);
+        result.bitrateRecv = Math.max(0, result.bitrateRecv || 0);
+
+        prevBytesSent     = result.bytesSent;
+        prevBytesReceived = result.bytesReceived;
+        prevStatsTime     = now;
+
         return result;
     }
 
@@ -1857,7 +1885,7 @@
         
         setInnerText('statResolution', stats.resolution);
         setInnerText('statCodec', stats.codec.toUpperCase());
-        setInnerText('statBitrate', formatBitrate(stats.bytesSent));
+        setInnerText('statBitrate', formatKbps(stats.bitrateSend));
         setInnerText('statFramerate', `${Math.round(stats.framerate)} fps`);
         setInnerText('statLatency', `${Math.round(stats.latency)} ms`);
         setInnerText('statJitter', `${Math.round(stats.jitter)} ms`);
@@ -1893,9 +1921,17 @@
         return `${(bytes / 1073741824).toFixed(2)} GB`;
     }
 
+    /** Format a kbps value for display */
+    function formatKbps(kbps) {
+        if (kbps <= 0) return '— kbps';
+        if (kbps < 1000) return `${kbps} kbps`;
+        return `${(kbps / 1000).toFixed(2)} Mbps`;
+    }
+
+    /** @deprecated Use formatKbps for bitrate; kept for any legacy callers */
     function formatBitrate(bytes) {
-        // Approximate bitrate from bytes (rough estimate)
-        const bitsPerSecond = (bytes * 8) / 2; // Divided by interval (2s)
+        // Legacy: approximate bitrate from cumulative bytes (rough)
+        const bitsPerSecond = (bytes * 8) / 2;
         if (bitsPerSecond < 1000) return `${bitsPerSecond} bps`;
         if (bitsPerSecond < 1000000) return `${(bitsPerSecond / 1000).toFixed(1)} Kbps`;
         return `${(bitsPerSecond / 1000000).toFixed(2)} Mbps`;
