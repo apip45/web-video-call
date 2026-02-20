@@ -14,7 +14,7 @@
     <!-- Video Container -->
     <div class="video-container" id="videoContainer">
         <!-- Remote Video (Fullscreen) -->
-        <div class="remote-video-wrapper" id="remoteVideoWrapper">
+        <div class="remote-video-wrapper" id="remoteVideoWrapper" onclick="handleRemoteVideoClick(event)">
             <video id="remoteVideo" autoplay playsinline></video>
             
             <!-- Remote User Info Overlay -->
@@ -200,6 +200,80 @@
                 </div>
             </div>
         </div>
+
+        <!-- Focus Control Panel (Admin Only) -->
+        <div class="focus-panel" id="focusPanel">
+            <div class="focus-panel-header">
+                <span>🎯 Focus Control</span>
+                <button class="btn-close" onclick="toggleFocusPanel()">&times;</button>
+            </div>
+            <div class="focus-panel-body">
+                <!-- Not supported yet / waiting -->
+                <div id="focusUnsupported" class="focus-unsupported">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <p>Client tidak support manual focus. Klik Refresh untuk cek ulang, atau gunakan mode Auto (default).</p>
+                </div>
+
+                <!-- Controls (shown when supported) -->
+                <div id="focusControls" style="display:none">
+                    <!-- Focus Mode -->
+                    <div class="quality-section">
+                        <label class="quality-label">Focus Mode</label>
+                        <div class="focus-mode-toggle">
+                            <button id="focusModeAuto" class="focus-mode-btn active" onclick="setAdminFocusMode('auto')">Auto</button>
+                            <button id="focusModeManual" class="focus-mode-btn" onclick="setAdminFocusMode('manual')">Manual</button>
+                        </div>
+                    </div>
+
+                    <!-- Focus Distance Slider -->
+                    <div class="quality-section">
+                        <label class="quality-label">
+                            Focus Distance: <span id="focusDistanceValue">0.50</span>
+                        </label>
+                        <input type="range" id="focusDistanceSlider" class="quality-slider"
+                               min="0" max="1" step="0.01" value="0.5"
+                               oninput="onFocusDistanceChange()"
+                               onchange="applyFocusDistance()">
+                        <div class="quality-range-labels">
+                            <span>Near (close)</span>
+                            <span>Far (infinite)</span>
+                        </div>
+                    </div>
+
+                    <!-- Point of Interest -->
+                    <div class="quality-section">
+                        <label class="quality-label">Point of Interest (Tap-to-Focus)</label>
+                        <button id="poiToggle" class="focus-poi-btn" onclick="toggleAdminPOI()" style="display:none">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <circle cx="12" cy="12" r="3"/>
+                                <line x1="12" y1="2" x2="12" y2="5"/>
+                                <line x1="12" y1="19" x2="12" y2="22"/>
+                                <line x1="2" y1="12" x2="5" y2="12"/>
+                                <line x1="19" y1="12" x2="22" y2="12"/>
+                            </svg>
+                            <span id="poiBtnText">POI: OFF</span>
+                        </button>
+                        <p id="poiHint" class="focus-poi-hint" style="display:none">
+                            Klik di area video lawan bicara untuk mengatur titik fokus kamera.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Refresh button (always visible) -->
+                <button class="btn btn-ghost focus-refresh-btn" onclick="requestFocusCapabilities()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="1 4 1 10 7 10"/>
+                        <path d="M3.51 15a9 9 0 1 0 .49-3.64"/>
+                    </svg>
+                    Refresh Kapabilitas
+                </button>
+            </div>
+        </div>
         <% } %>
 
         <!-- Mini Stats (All Users) -->
@@ -344,6 +418,18 @@
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                     <circle cx="12" cy="13" r="4"/>
                     <path d="M17 8l-2 2m0-2l2 2"/>
+                </svg>
+            </button>
+
+            <!-- Focus Control (Admin) -->
+            <button class="control-btn" id="focusBtn" onclick="toggleFocusPanel()" title="Focus Control">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="3"/>
+                    <line x1="12" y1="2" x2="12" y2="5"/>
+                    <line x1="12" y1="19" x2="12" y2="22"/>
+                    <line x1="2" y1="12" x2="5" y2="12"/>
+                    <line x1="19" y1="12" x2="22" y2="12"/>
                 </svg>
             </button>
 

@@ -1317,6 +1317,127 @@ class WebRTCHandler {
 
     /**
      * =========================================================================
+     * CAMERA FOCUS CONTROL
+     * =========================================================================
+     */
+
+    /**
+     * Query the local video track's focus capabilities.
+     * Returns a plain object so it can be JSON-serialised and sent over socket.
+     * @returns {Object} capabilities
+     */
+    getFocusCapabilities() {
+        try {
+            if (!this.localStream) return { supported: false, reason: 'no_stream' };
+            const track = this.localStream.getVideoTracks()[0];
+            if (!track) return { supported: false, reason: 'no_track' };
+
+            // getCapabilities is not universally supported
+            if (typeof track.getCapabilities !== 'function') {
+                return { supported: false, reason: 'api_not_supported' };
+            }
+
+            const capabilities = track.getCapabilities();
+            const focusModes = capabilities.focusMode || [];
+            const supportsManual = focusModes.includes('manual');
+
+            if (!supportsManual) {
+                return { supported: false, reason: 'manual_not_supported', focusModes };
+            }
+
+            const result = {
+                supported: true,
+                focusModes,
+                focusDistance: capabilities.focusDistance ? {
+                    min: capabilities.focusDistance.min,
+                    max: capabilities.focusDistance.max,
+                    step: capabilities.focusDistance.step || 0.01
+                } : null,
+                pointOfInterest: !!(capabilities.pointOfInterest)
+            };
+
+            // Include current track settings
+            if (typeof track.getSettings === 'function') {
+                const settings = track.getSettings();
+                result.currentFocusMode = settings.focusMode || 'auto';
+                if (settings.focusDistance !== undefined) {
+                    result.currentFocusDistance = settings.focusDistance;
+                }
+            }
+
+            console.log('[WebRTC] 🎯 Focus capabilities:', result);
+            return result;
+        } catch (error) {
+            console.warn('[WebRTC] ⚠️ getFocusCapabilities error:', error.message);
+            return { supported: false, reason: 'error', error: error.message };
+        }
+    }
+
+    /**
+     * Apply focus settings to the local video track.
+     * @param {Object} settings - { focusMode: 'auto'|'manual', focusDistance?: number }
+     * @returns {Promise<Object>} { success, error? }
+     */
+    async applyFocus(settings) {
+        try {
+            if (!settings || typeof settings !== 'object') {
+                return { success: false, error: 'invalid_settings' };
+            }
+            if (!this.localStream) return { success: false, error: 'no_stream' };
+            const track = this.localStream.getVideoTracks()[0];
+            if (!track) return { success: false, error: 'no_track' };
+
+            const constraint = { advanced: [{}] };
+
+            if (settings.focusMode) {
+                constraint.advanced[0].focusMode = settings.focusMode;
+            }
+            if (settings.focusMode === 'manual' && settings.focusDistance !== undefined) {
+                constraint.advanced[0].focusDistance = settings.focusDistance;
+            }
+
+            await track.applyConstraints(constraint);
+            console.log('[WebRTC] 🎯 Focus applied:', settings);
+            return { success: true };
+        } catch (error) {
+            console.warn('[WebRTC] ⚠️ applyFocus error:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Set point of interest (tap-to-focus) on the local video track.
+     * @param {number} x - normalised 0.0–1.0
+     * @param {number} y - normalised 0.0–1.0
+     * @returns {Promise<Object>} { success, error? }
+     */
+    async setPointOfInterest(x, y) {
+        try {
+            if (typeof x !== 'number' || typeof y !== 'number' ||
+                isNaN(x) || isNaN(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+                return { success: false, error: 'invalid_coordinates' };
+            }
+            if (!this.localStream) return { success: false, error: 'no_stream' };
+            const track = this.localStream.getVideoTracks()[0];
+            if (!track) return { success: false, error: 'no_track' };
+
+            await track.applyConstraints({
+                advanced: [{
+                    pointOfInterest: { x, y },
+                    focusMode: 'manual'
+                }]
+            });
+
+            console.log(`[WebRTC] 🎯 POI set: (${x.toFixed(3)}, ${y.toFixed(3)})`);
+            return { success: true };
+        } catch (error) {
+            console.warn('[WebRTC] ⚠️ setPointOfInterest error:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * =========================================================================
      * TIMEOUT MANAGEMENT
      * =========================================================================
      */

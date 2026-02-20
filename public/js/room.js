@@ -150,6 +150,14 @@
             if (webrtc) webrtc.sendMediaStatus();
         });
 
+        // Focus control (client side - receives commands from admin)
+        socket.on('request-focus-capabilities', handleFocusCapabilitiesRequest);
+        socket.on('focus-command', handleFocusCommand);
+        socket.on('poi-command', handlePOICommand);
+
+        // Focus control (admin side - receives capability response from client)
+        socket.on('focus-capabilities-response', handleFocusCapabilitiesResponse);
+
         // Admin camera control command
         socket.on('admin-camera-command', handleAdminCameraCommand);
 
@@ -438,6 +446,11 @@
         // Reset initiator status - next person who joins will get an offer from us
         webrtc.isInitiator = true;
         console.log('[Room] 🔄 Reset to initiator mode, waiting for new peer');
+
+        // Reset focus panel state
+        adminFocusCapabilities = null;
+        if (adminPOIActive) deactivatePOI();
+        updateFocusPanelUI();
     }
 
     async function handleOffer(data) {
@@ -651,6 +664,342 @@
     function handleReconnectFailed(data) {
         console.error('[Room] ❌ Server rejected reconnect');
         showToast(data?.message || 'Reconnect gagal', 'error');
+    }
+
+    // ==========================================================================
+    // FOCUS CONTROL HANDLERS
+    // ==========================================================================
+
+    // --- CLIENT SIDE (non-admin: receives commands, applies to own camera) ---
+
+    async function handleFocusCapabilitiesRequest() {
+        if (ROOM_DATA.isAdmin) return; // Only non-admin responds
+        console.log('[Room] 🎯 Focus capabilities requested by admin');
+
+        if (!socket) return;
+
+        if (!webrtc) {
+            socket.emit('focus-capabilities-response', {
+                roomId: ROOM_DATA.roomId,
+                capabilities: { supported: false, reason: 'webrtc_not_ready' }
+            });
+            return;
+        }
+
+        const capabilities = webrtc.getFocusCapabilities();
+        socket.emit('focus-capabilities-response', {
+            roomId: ROOM_DATA.roomId,
+            capabilities
+        });
+
+        console.log('[Room] 🎯 Focus capabilities sent:', capabilities.supported);
+    }
+
+    async function handleFocusCommand(data) {
+        if (ROOM_DATA.isAdmin) return;
+        if (!data || !data.focusMode) {
+            console.warn('[Room] ⚠️ handleFocusCommand: invalid data', data);
+            return;
+        }
+        console.log('[Room] 🎯 Focus command received:', data);
+
+        if (!webrtc) return;
+        const result = await webrtc.applyFocus({
+            focusMode: data.focusMode,
+            focusDistance: data.focusDistance
+        });
+
+        if (!result.success) {
+            console.warn('[Room] ⚠️ Focus command failed:', result.error);
+        }
+    }
+
+    async function handlePOICommand(data) {
+        if (ROOM_DATA.isAdmin) return;
+        if (!data || typeof data.x !== 'number' || typeof data.y !== 'number') {
+            console.warn('[Room] ⚠️ handlePOICommand: invalid data', data);
+            return;
+        }
+        console.log('[Room] 🎯 POI command received:', data);
+
+        if (!webrtc) return;
+        const result = await webrtc.setPointOfInterest(data.x, data.y);
+
+        if (!result.success) {
+            console.warn('[Room] ⚠️ POI command failed:', result.error);
+        }
+    }
+
+    // --- ADMIN SIDE (sends commands, receives capability response) ---
+
+    let adminFocusCapabilities = null; // capabilities object from client
+    let adminFocusMode = 'auto';       // 'auto' | 'manual'
+    let adminFocusDistance = 0.5;
+    let adminPOIActive = false;
+
+    function handleFocusCapabilitiesResponse(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        if (!data || !data.capabilities) {
+            console.warn('[Room] ⚠️ handleFocusCapabilitiesResponse: missing capabilities');
+            return;
+        }
+        console.log('[Room] 🎯 Focus capabilities received:', data.capabilities);
+        adminFocusCapabilities = data.capabilities;
+        updateFocusPanelUI();
+    }
+
+    window.requestFocusCapabilities = function() {
+        if (!socket) return;
+        if (!remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+        console.log('[Room] 🎯 Requesting focus capabilities from client...');
+        socket.emit('request-focus-capabilities', { roomId: ROOM_DATA.roomId });
+    };
+
+    /**
+     * Update all focus panel UI elements based on current state.
+     */
+    function updateFocusPanelUI() {
+        const focusUnsupported = document.getElementById('focusUnsupported');
+        const focusControls   = document.getElementById('focusControls');
+        if (!focusUnsupported || !focusControls) return;
+
+        if (!adminFocusCapabilities || !adminFocusCapabilities.supported) {
+            focusUnsupported.style.display = 'flex';
+            focusControls.style.display = 'none';
+            return;
+        }
+
+        focusUnsupported.style.display = 'none';
+        focusControls.style.display = 'block';
+
+        // Focus mode buttons
+        const btnAuto   = document.getElementById('focusModeAuto');
+        const btnManual = document.getElementById('focusModeManual');
+        if (btnAuto)   btnAuto.classList.toggle('active', adminFocusMode === 'auto');
+        if (btnManual) btnManual.classList.toggle('active', adminFocusMode === 'manual');
+
+        // Focus distance slider
+        const slider    = document.getElementById('focusDistanceSlider');
+        const sliderVal = document.getElementById('focusDistanceValue');
+        if (slider) {
+            const cap = adminFocusCapabilities.focusDistance;
+            if (cap) {
+                const capMin = parseFloat(cap.min);
+                const capMax = parseFloat(cap.max);
+                slider.min  = capMin;
+                slider.max  = capMax;
+                slider.step = cap.step || 0.01;
+
+                // Only seed the value if admin's current setting is outside the device's range
+                // (e.g. default 0.5 may be outside a device's 1–10 range).
+                // Once the admin has touched the slider, preserve their choice.
+                if (adminFocusDistance < capMin || adminFocusDistance > capMax) {
+                    const current = adminFocusCapabilities.currentFocusDistance;
+                    adminFocusDistance = current !== undefined
+                        ? parseFloat(current)
+                        : (capMin + capMax) / 2;
+                }
+                slider.value = adminFocusDistance;
+                if (sliderVal) sliderVal.textContent = adminFocusDistance.toFixed(2);
+            }
+            slider.disabled = (adminFocusMode !== 'manual');
+        }
+
+        // POI toggle
+        const poiToggle = document.getElementById('poiToggle');
+        const poiBtnText = document.getElementById('poiBtnText');
+        const poiHint   = document.getElementById('poiHint');
+        if (adminFocusCapabilities.pointOfInterest) {
+            if (poiToggle) poiToggle.style.display = 'flex';
+        } else {
+            if (poiToggle) poiToggle.style.display = 'none';
+            if (poiHint)   poiHint.style.display   = 'none';
+        }
+        if (poiToggle)  poiToggle.classList.toggle('active', adminPOIActive);
+        if (poiBtnText) poiBtnText.textContent = adminPOIActive ? 'POI: ON' : 'POI: OFF';
+        if (poiHint)    poiHint.style.display  = adminPOIActive ? 'block' : 'none';
+    }
+
+    window.toggleFocusPanel = function() {
+        const panel    = document.getElementById('focusPanel');
+        const focusBtn = document.getElementById('focusBtn');
+        if (!panel) return;
+
+        const isOpen = panel.classList.contains('visible');
+
+        // Close other panels first
+        document.getElementById('qualityPanel')?.classList.remove('visible');
+        document.getElementById('qualityBtn')?.classList.remove('active');
+        document.getElementById('statsPanel')?.classList.remove('visible');
+        document.getElementById('statsBtn')?.classList.remove('active');
+
+        if (isOpen) {
+            panel.classList.remove('visible');
+            if (focusBtn) focusBtn.classList.remove('active');
+            // Deactivate POI when panel closes
+            if (adminPOIActive) deactivatePOI();
+        } else {
+            panel.classList.add('visible');
+            if (focusBtn) focusBtn.classList.add('active');
+            // Auto-request capabilities
+            if (remoteSocketId && !adminFocusCapabilities) {
+                window.requestFocusCapabilities();
+            } else {
+                updateFocusPanelUI();
+            }
+        }
+    };
+
+    window.setAdminFocusMode = function(mode) {
+        if (!ROOM_DATA.isAdmin) return;
+        if (!remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+        if (!adminFocusCapabilities?.supported) {
+            showToast('Client tidak support manual focus', 'warning');
+            return;
+        }
+
+        adminFocusMode = mode;
+
+        if (socket) {
+            socket.emit('set-focus', {
+                roomId: ROOM_DATA.roomId,
+                targetSocketId: remoteSocketId,
+                focusMode: mode,
+                focusDistance: mode === 'manual' ? adminFocusDistance : undefined
+            });
+        }
+
+        // Turn off POI if switching back to auto
+        if (mode === 'auto' && adminPOIActive) deactivatePOI();
+
+        updateFocusPanelUI();
+        showToast(`🎯 Focus mode: ${mode}`, 'info');
+    };
+
+    window.onFocusDistanceChange = function() {
+        const slider    = document.getElementById('focusDistanceSlider');
+        const sliderVal = document.getElementById('focusDistanceValue');
+        if (!slider) return;
+        adminFocusDistance = parseFloat(slider.value);
+        if (sliderVal) sliderVal.textContent = adminFocusDistance.toFixed(2);
+    };
+
+    window.applyFocusDistance = function() {
+        if (!ROOM_DATA.isAdmin || adminFocusMode !== 'manual' || !remoteSocketId || !socket) return;
+
+        socket.emit('set-focus', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId,
+            focusMode: 'manual',
+            focusDistance: adminFocusDistance
+        });
+
+        showToast(`🎯 Focus distance: ${adminFocusDistance.toFixed(2)}`, 'info');
+    };
+
+    window.toggleAdminPOI = function() {
+        if (!ROOM_DATA.isAdmin) return;
+        if (!adminFocusCapabilities?.pointOfInterest) {
+            showToast('Client tidak support Point of Interest', 'warning');
+            return;
+        }
+        if (!remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+
+        if (adminPOIActive) {
+            deactivatePOI();
+        } else {
+            activatePOI();
+        }
+    };
+
+    function activatePOI() {
+        adminPOIActive = true;
+        elements.remoteVideoWrapper.classList.add('poi-active');
+        // Ensure manual mode is active (POI requires manual)
+        if (adminFocusMode !== 'manual') {
+            window.setAdminFocusMode('manual');
+        }
+        updateFocusPanelUI();
+        console.log('[Room] 🎯 POI mode activated');
+    }
+
+    function deactivatePOI() {
+        adminPOIActive = false;
+        elements.remoteVideoWrapper.classList.remove('poi-active');
+        // Remove any lingering focus indicator
+        const indicator = document.getElementById('focusIndicator');
+        if (indicator) indicator.classList.remove('animating');
+        updateFocusPanelUI();
+        console.log('[Room] 🎯 POI mode deactivated');
+    }
+
+    /**
+     * Handle click on remote video wrapper.
+     * Only fires POI logic when POI mode is active and user is admin.
+     */
+    window.handleRemoteVideoClick = function(event) {
+        if (!ROOM_DATA.isAdmin || !adminPOIActive || !remoteSocketId) return;
+
+        const videoEl = elements.remoteVideo;
+        if (!videoEl) return;
+
+        const rect = videoEl.getBoundingClientRect();
+
+        // Normalise to [0, 1] relative to the actual video element
+        const rawX = (event.clientX - rect.left)  / rect.width;
+        const rawY = (event.clientY - rect.top)   / rect.height;
+
+        // Clamp
+        const x = Math.max(0, Math.min(1, rawX));
+        const y = Math.max(0, Math.min(1, rawY));
+
+        console.log(`[Room] 🎯 POI click: (${x.toFixed(3)}, ${y.toFixed(3)})`);
+
+        // Show visual indicator at click position (relative to the wrapper)
+        showFocusIndicator(event.clientX, event.clientY);
+
+        // Send to server → client
+        if (!socket) return;
+        socket.emit('set-point-of-interest', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId,
+            x,
+            y
+        });
+    };
+
+    /**
+     * Render the shrinking focus-indicator square at the given viewport coords.
+     */
+    function showFocusIndicator(clientX, clientY) {
+        if (!elements.remoteVideoWrapper) return;
+
+        let indicator = document.getElementById('focusIndicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'focusIndicator';
+            indicator.className = 'focus-indicator';
+            elements.remoteVideoWrapper.appendChild(indicator);
+        }
+
+        // Position relative to the wrapper
+        const wrapperRect = elements.remoteVideoWrapper.getBoundingClientRect();
+        indicator.style.left = (clientX - wrapperRect.left) + 'px';
+        indicator.style.top  = (clientY - wrapperRect.top)  + 'px';
+
+        // Restart animation
+        indicator.classList.remove('animating');
+        void indicator.offsetWidth; // force reflow
+        indicator.classList.add('animating');
     }
 
     // ==========================================================================
@@ -1039,6 +1388,12 @@
         if (socket) {
             socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
         }
+
+        // Deactivate POI mode before leaving
+        if (adminPOIActive) deactivatePOI();
+        document.getElementById('focusPanel')?.classList.remove('visible');
+        document.getElementById('focusBtn')?.classList.remove('active');
+        adminFocusCapabilities = null;
         
         if (webrtc) {
             webrtc.cleanup();
@@ -1081,10 +1436,14 @@
             elements.statsPanel.classList.add('visible');
             if (elements.statsBtn) elements.statsBtn.classList.add('active');
             
-            // Close quality panel if open
+            // Close other panels if open
             const qualityPanel = document.getElementById('qualityPanel');
             if (qualityPanel && qualityPanel.classList.contains('visible')) {
                 toggleQualityPanel();
+            }
+            const focusPanel = document.getElementById('focusPanel');
+            if (focusPanel && focusPanel.classList.contains('visible')) {
+                window.toggleFocusPanel();
             }
         }
     };
@@ -1103,9 +1462,13 @@
             qualityPanel.classList.add('visible');
             if (qualityBtn) qualityBtn.classList.add('active');
             
-            // Close stats panel if open
+            // Close other panels if open
             if (elements.statsPanel && elements.statsPanel.classList.contains('visible')) {
                 toggleStatsPanel();
+            }
+            const focusPanel = document.getElementById('focusPanel');
+            if (focusPanel && focusPanel.classList.contains('visible')) {
+                window.toggleFocusPanel();
             }
             
             // Initialize with current settings

@@ -532,6 +532,123 @@ const setupSocketHandlers = (io) => {
         });
 
         // =========================================================================
+        // FOCUS CONTROL
+        // =========================================================================
+
+        // Admin requests focus capabilities from client
+        socket.on('request-focus-capabilities', async (data) => {
+            try {
+                const { roomId } = data;
+                if (socket.userRole !== 'admin') return;
+                console.log(`[Socket] 🎯 Admin ${socket.username} requesting focus capabilities`);
+
+                const room = await Room.findOne({ roomId, isActive: true });
+                if (!room) return;
+
+                const userParticipant = room.participants.find(p => p.role === 'user');
+                if (userParticipant) {
+                    io.to(userParticipant.socketId).emit('request-focus-capabilities', {
+                        requesterSocketId: socket.id
+                    });
+                    console.log(`[Socket] 📡 Forwarded focus capabilities request to ${userParticipant.socketId}`);
+                } else {
+                    // No client yet - respond with unsupported
+                    socket.emit('focus-capabilities-response', {
+                        capabilities: { supported: false }
+                    });
+                }
+            } catch (error) {
+                console.error(`[Socket] ❌ Request focus capabilities error: ${error.message}`);
+            }
+        });
+
+        // Client responds with its focus capabilities
+        socket.on('focus-capabilities-response', async (data) => {
+            try {
+                const { roomId, capabilities } = data || {};
+                if (!roomId || !capabilities) return; // guard missing fields
+
+                console.log(`[Socket] 🎯 Focus capabilities response from ${socket.username}:`, capabilities?.supported);
+
+                const room = await Room.findOne({ roomId, isActive: true });
+                if (!room) return;
+
+                // Only allow a user participant to respond
+                const senderParticipant = room.participants.find(
+                    p => p.socketId === socket.id && p.role === 'user'
+                );
+                if (!senderParticipant) return;
+
+                const adminParticipant = room.participants.find(p => p.role === 'admin');
+                if (adminParticipant) {
+                    io.to(adminParticipant.socketId).emit('focus-capabilities-response', {
+                        capabilities,
+                        senderSocketId: socket.id
+                    });
+                }
+            } catch (error) {
+                console.error(`[Socket] ❌ Focus capabilities response error: ${error.message}`);
+            }
+        });
+
+        // Admin sends focus command (focusMode + focusDistance) to client
+        socket.on('set-focus', async (data) => {
+            try {
+                const { roomId, targetSocketId, focusMode, focusDistance } = data;
+                if (socket.userRole !== 'admin') return;
+                if (!roomId || !targetSocketId || !focusMode) return;
+
+                // Validate target is a user participant in the same room
+                const room = await Room.findOne({ roomId, isActive: true });
+                if (!room) return;
+                const targetParticipant = room.participants.find(
+                    p => p.socketId === targetSocketId && p.role === 'user'
+                );
+                if (!targetParticipant) {
+                    console.warn(`[Socket] ⚠️ set-focus: target ${targetSocketId} not found or not a user`);
+                    return;
+                }
+
+                console.log(`[Socket] 🎯 Admin ${socket.username} set focus: mode=${focusMode}, distance=${focusDistance}`);
+                io.to(targetSocketId).emit('focus-command', { focusMode, focusDistance });
+            } catch (error) {
+                console.error(`[Socket] ❌ Set focus error: ${error.message}`);
+            }
+        });
+
+        // Admin sends point of interest to client
+        socket.on('set-point-of-interest', async (data) => {
+            try {
+                const { roomId, targetSocketId, x, y } = data;
+                if (socket.userRole !== 'admin') return;
+                if (!roomId || !targetSocketId) return;
+
+                // Validate x/y are normalised numbers
+                if (typeof x !== 'number' || typeof y !== 'number' ||
+                    x < 0 || x > 1 || y < 0 || y > 1) {
+                    console.warn(`[Socket] ⚠️ set-point-of-interest: invalid coords (${x}, ${y})`);
+                    return;
+                }
+
+                // Validate target is a user participant in the same room
+                const room = await Room.findOne({ roomId, isActive: true });
+                if (!room) return;
+                const targetParticipant = room.participants.find(
+                    p => p.socketId === targetSocketId && p.role === 'user'
+                );
+                if (!targetParticipant) {
+                    console.warn(`[Socket] ⚠️ set-point-of-interest: target ${targetSocketId} not found or not a user`);
+                    return;
+                }
+
+                console.log(`[Socket] 🎯 Admin ${socket.username} set POI: (${x.toFixed(3)}, ${y.toFixed(3)})`);
+                io.to(targetSocketId).emit('poi-command', { x, y });
+            } catch (error) {
+                console.error(`[Socket] ❌ Set POI error: ${error.message}`);
+            }
+        });
+
+        // =========================================================================
         // RECONNECT REQUEST
         // =========================================================================
         socket.on('reconnect-request', async (data) => {
