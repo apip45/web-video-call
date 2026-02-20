@@ -736,6 +736,7 @@
     let adminFocusMode = 'auto';       // 'auto' | 'manual'
     let adminFocusDistance = 0.5;
     let adminPOIActive = false;
+    let focusIndicatorTimer = null;    // timer for phase-2 of focus ring animation
 
     function handleFocusCapabilitiesResponse(data) {
         if (!ROOM_DATA.isAdmin) return;
@@ -935,9 +936,15 @@
     function deactivatePOI() {
         adminPOIActive = false;
         elements.remoteVideoWrapper.classList.remove('poi-active');
-        // Remove any lingering focus indicator
+        // Cancel any in-flight focus ring animation and hide indicator
+        if (focusIndicatorTimer) {
+            clearTimeout(focusIndicatorTimer);
+            focusIndicatorTimer = null;
+        }
         const indicator = document.getElementById('focusIndicator');
-        if (indicator) indicator.classList.remove('animating');
+        if (indicator) {
+            indicator.classList.remove('focusing', 'locked');
+        }
         updateFocusPanelUI();
         console.log('[Room] 🎯 POI mode deactivated');
     }
@@ -978,7 +985,9 @@
     };
 
     /**
-     * Render the shrinking focus-indicator square at the given viewport coords.
+     * Two-phase camera focus ring:
+     *   Phase 1 (focusing): white ring shrinks 88px → 46px over 550ms
+     *   Phase 2 (locked):   ring flashes yellow then fades over 550ms
      */
     function showFocusIndicator(clientX, clientY) {
         if (!elements.remoteVideoWrapper) return;
@@ -991,15 +1000,29 @@
             elements.remoteVideoWrapper.appendChild(indicator);
         }
 
-        // Position relative to the wrapper
+        // Cancel any running phase-2 timer from a previous click
+        if (focusIndicatorTimer) {
+            clearTimeout(focusIndicatorTimer);
+            focusIndicatorTimer = null;
+        }
+
+        // Position at click point (wrapper-relative, centred via CSS translate)
         const wrapperRect = elements.remoteVideoWrapper.getBoundingClientRect();
         indicator.style.left = (clientX - wrapperRect.left) + 'px';
         indicator.style.top  = (clientY - wrapperRect.top)  + 'px';
 
-        // Restart animation
-        indicator.classList.remove('animating');
-        void indicator.offsetWidth; // force reflow
-        indicator.classList.add('animating');
+        // Phase 1 — white ring shrinks (focusing)
+        indicator.classList.remove('focusing', 'locked');
+        void indicator.offsetWidth;              // force reflow to restart animation
+        indicator.classList.add('focusing');
+
+        // Phase 2 — yellow flash + fade (locked) after shrink finishes
+        focusIndicatorTimer = setTimeout(() => {
+            focusIndicatorTimer = null;
+            indicator.classList.remove('focusing');
+            void indicator.offsetWidth;
+            indicator.classList.add('locked');
+        }, 550);
     }
 
     // ==========================================================================

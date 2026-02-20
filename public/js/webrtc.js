@@ -1421,15 +1421,33 @@ class WebRTCHandler {
             const track = this.localStream.getVideoTracks()[0];
             if (!track) return { success: false, error: 'no_track' };
 
-            await track.applyConstraints({
-                advanced: [{
-                    pointOfInterest: { x, y },
-                    focusMode: 'manual'
-                }]
-            });
+            // Try both constraint-name variants — Chrome Android uses 'pointOfInterest'
+            // (singular, W3C draft) but some older builds also recognise 'pointsOfInterest'.
+            // We attempt them in order, first success wins.
+            const variants = [
+                // Standard W3C draft
+                { advanced: [{ pointOfInterest: { x, y }, focusMode: 'manual' }] },
+                // Older Safari/Chrome variant (array form)
+                { advanced: [{ pointsOfInterest: [{ x, y }], focusMode: 'manual' }] },
+                // Minimal — just POI without forcing mode (some devices reject mode change)
+                { advanced: [{ pointOfInterest: { x, y } }] },
+            ];
 
-            console.log(`[WebRTC] 🎯 POI set: (${x.toFixed(3)}, ${y.toFixed(3)})`);
-            return { success: true };
+            let lastError = null;
+            for (const constraint of variants) {
+                try {
+                    await track.applyConstraints(constraint);
+                    const key = Object.keys(constraint.advanced[0])[0];
+                    console.log(`[WebRTC] 🎯 POI set (${key}): (${x.toFixed(3)}, ${y.toFixed(3)})`);
+                    return { success: true };
+                } catch (err) {
+                    lastError = err;
+                    console.warn('[WebRTC] ⚠️ POI variant failed:', err.message);
+                }
+            }
+
+            console.error('[WebRTC] ❌ All POI variants failed:', lastError?.message);
+            return { success: false, error: lastError?.message || 'all_variants_failed' };
         } catch (error) {
             console.warn('[WebRTC] ⚠️ setPointOfInterest error:', error.message);
             return { success: false, error: error.message };
