@@ -88,10 +88,9 @@
             // Make PIP draggable
             makePIPDraggable();
 
-            // Start stats collection if admin AND admin control is enabled
-            if (ROOM_DATA.isAdmin && ROOM_DATA.adminControlEnabled) {
-                startStatsCollection();
-            }
+            // Start stats collection for all users (mini stats visible to everyone)
+            // Admin also gets the full stats panel + sends stats to server
+            startStatsCollection();
 
             console.log('[Room] ✅ Room initialized successfully');
         } catch (error) {
@@ -1792,11 +1791,13 @@
                     updateStatsDisplay(stats);
                     updateMiniStats(stats);
                     
-                    // Send stats to server
-                    socket.emit('webrtc-stats', {
-                        roomId: ROOM_DATA.roomId,
-                        stats: stats
-                    });
+                    // Only admin sends stats to server
+                    if (ROOM_DATA.isAdmin && ROOM_DATA.adminControlEnabled) {
+                        socket.emit('webrtc-stats', {
+                            roomId: ROOM_DATA.roomId,
+                            stats: stats
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('[Room] ❌ Stats collection error:', error);
