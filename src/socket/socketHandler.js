@@ -9,6 +9,7 @@
 const Room = require('../models/Room');
 const User = require('../models/User');
 const Stats = require('../models/Stats');
+const Settings = require('../models/Settings');
 const jwt = require('jsonwebtoken');
 
 // Store for room cleanup timers
@@ -17,6 +18,31 @@ const ROOM_CLEANUP_DELAY = 10000; // 10 seconds
 
 // Store for active call stats
 const activeCallStats = new Map();
+
+/**
+ * Guard: returns false and emits an error to the socket if admin control is disabled.
+ * Use at the start of every admin-only command handler.
+ */
+async function guardAdminControl(socket, responseEvent) {
+    try {
+        const enabled = await Settings.getAdminControlEnabled();
+        if (!enabled) {
+            if (responseEvent) {
+                socket.emit(responseEvent, {
+                    success: false,
+                    message: 'Admin control sedang dinonaktifkan oleh sistem'
+                });
+            }
+            console.log(`[Socket] 🚫 Admin control disabled — blocked ${socket.username}`);
+            return false;
+        }
+        return true;
+    } catch (err) {
+        // DB unavailable — fail-open (allow control) to avoid locking out admin
+        console.warn(`[Socket] ⚠️ guardAdminControl DB error, allowing by default: ${err.message}`);
+        return true;
+    }
+}
 
 // Store for heartbeat tracking
 const heartbeatTimers = new Map();
@@ -326,42 +352,30 @@ const setupSocketHandlers = (io) => {
                     return;
                 }
 
+                // Guard: admin control must be enabled
+                if (!await guardAdminControl(socket, 'admin-camera-response')) return;
+
+                if (!targetSocketId || !action) {
+                    socket.emit('admin-camera-response', { success: false, message: 'Data tidak lengkap' });
+                    return;
+                }
+
                 console.log(`[Socket] 👑 Admin ${socket.username} toggling camera for user ${targetSocketId}: ${action}`);
 
-                // Find the target user in the room
-                const room = await Room.findOne({ roomId: roomId });
-                if (room) {
-                    const targetParticipant = room.participants.find(p => p.socketId === targetSocketId);
-                    if (targetParticipant && targetParticipant.role === 'user') {
-                        // Send command to target user
-                        socket.to(targetSocketId).emit('admin-camera-command', {
-                            action: action, // 'on' or 'off'
-                            adminUsername: socket.username
-                        });
+                // Relay directly to target socket — avoids stale-socketId failures after reconnect.
+                // Client guards with userRole === 'user' check.
+                socket.to(targetSocketId).emit('admin-camera-command', {
+                    action: action,
+                    adminUsername: socket.username
+                });
 
-                        // Send confirmation to admin
-                        const actionText = action === 'on' ? 'diaktifkan' : 'dinonaktifkan';
-                        socket.emit('admin-camera-response', { 
-                            success: true, 
-                            action: action,
-                            message: `Kamera user berhasil ${actionText}` 
-                        });
-
-                        // Log the action
-                        console.log(`[Socket] 📡 Sent camera ${action} command to user`);
-                    } else {
-                        console.log(`[Socket] ⚠️ Target user not found or not a user role`);
-                        socket.emit('admin-camera-response', { 
-                            success: false, 
-                            message: 'User tidak ditemukan atau bukan role user' 
-                        });
-                    }
-                } else {
-                    socket.emit('admin-camera-response', { 
-                        success: false, 
-                        message: 'Room tidak ditemukan' 
-                    });
-                }
+                const actionText = action === 'on' ? 'diaktifkan' : 'dinonaktifkan';
+                socket.emit('admin-camera-response', {
+                    success: true,
+                    action: action,
+                    message: `Perintah kamera ${actionText} dikirim`
+                });
+                console.log(`[Socket] 📡 Sent camera ${action} command to ${targetSocketId}`);
             } catch (error) {
                 console.error(`[Socket] ❌ Admin toggle user camera error: ${error.message}`);
                 socket.emit('admin-camera-response', { 
@@ -384,24 +398,17 @@ const setupSocketHandlers = (io) => {
                     return;
                 }
 
+                // Guard: admin control must be enabled
+                if (!await guardAdminControl(socket, null)) return;
+
+                if (!targetSocketId) return;
                 console.log(`[Socket] 👑 Admin ${socket.username} switching camera for user ${targetSocketId}`);
 
-                // Find the target user in the room
-                const room = await Room.findOne({ roomId: roomId });
-                if (room) {
-                    const targetParticipant = room.participants.find(p => p.socketId === targetSocketId);
-                    if (targetParticipant && targetParticipant.role === 'user') {
-                        // Send command to target user
-                        socket.to(targetSocketId).emit('admin-switch-camera-command', {
-                            adminUsername: socket.username
-                        });
-
-                        // Log the action
-                        console.log(`[Socket] 📡 Sent switch camera command to ${targetParticipant.username}`);
-                    } else {
-                        console.log(`[Socket] ⚠️ Target user not found or not a user role`);
-                    }
-                }
+                // Relay directly to target socket — avoids stale-socketId failures after reconnect.
+                socket.to(targetSocketId).emit('admin-switch-camera-command', {
+                    adminUsername: socket.username
+                });
+                console.log(`[Socket] 📡 Sent switch camera command to ${targetSocketId}`);
             } catch (error) {
                 console.error(`[Socket] ❌ Admin switch user camera error: ${error.message}`);
             }
@@ -423,6 +430,9 @@ const setupSocketHandlers = (io) => {
                     });
                     return;
                 }
+
+                // Guard: admin control must be enabled
+                if (!await guardAdminControl(socket, 'admin-quality-response')) return;
 
                 console.log(`[Socket] 👑 Admin ${socket.username} changing video quality for user ${targetSocketId}`);
                 console.log(`[Socket] 🎥 Quality settings:`, qualitySettings);
@@ -530,6 +540,8 @@ const setupSocketHandlers = (io) => {
             try {
                 const { roomId } = data;
                 if (socket.userRole !== 'admin') return;
+                // Guard: admin control must be enabled
+                if (!await guardAdminControl(socket, null)) return;
                 console.log(`[Socket] 🎯 Admin ${socket.username} requesting focus capabilities`);
 
                 const room = await Room.findOne({ roomId, isActive: true });
@@ -586,6 +598,8 @@ const setupSocketHandlers = (io) => {
             try {
                 const { roomId, targetSocketId, focusMode, focusDistance } = data;
                 if (socket.userRole !== 'admin') return;
+                // Guard: admin control must be enabled
+                if (!await guardAdminControl(socket, null)) return;
                 if (!roomId || !targetSocketId || !focusMode) return;
 
                 // Validate target is a user participant in the same room
@@ -611,6 +625,8 @@ const setupSocketHandlers = (io) => {
             try {
                 const { roomId, targetSocketId, x, y } = data;
                 if (socket.userRole !== 'admin') return;
+                // Guard: admin control must be enabled
+                if (!await guardAdminControl(socket, null)) return;
                 if (!roomId || !targetSocketId) return;
 
                 // Validate x/y are normalised numbers

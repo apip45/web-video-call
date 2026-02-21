@@ -79,7 +79,7 @@
         </div>
 
         <!-- Stats Panel (Admin Only) -->
-        <% if (isAdmin) { %>
+        <% if (isAdmin && adminControlEnabled) { %>
         <div class="stats-panel" id="statsPanel">
             <div class="stats-panel-header">
                 <span>WebRTC Stats</span>
@@ -371,7 +371,7 @@
         </div>
         
         <div class="controls-right">
-            <% if (isAdmin) { %>
+            <% if (isAdmin && adminControlEnabled) { %>
             <!-- Video Quality Settings (Admin) -->
             <button class="control-btn" id="qualityBtn" onclick="toggleQualityPanel()" title="Video Quality Settings">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -473,6 +473,7 @@
             username: '<%= username %>',
             userRole: '<%= userRole || "user" %>',
             isAdmin: <%= isAdmin ? 'true' : 'false' %>,
+            adminControlEnabled: <%= adminControlEnabled ? 'true' : 'false' %>,
             iceServers: <%- iceServers %>,
             videoSettings: <%- videoSettings %>,
             webrtcMode: '<%= webrtcMode %>',  // 'mesh' or 'sfu'

@@ -10,6 +10,7 @@ const router = express.Router();
 const User = require('../models/User');
 const Room = require('../models/Room');
 const Stats = require('../models/Stats');
+const Settings = require('../models/Settings');
 const { isAuthenticated, isAdmin } = require('../middleware/auth');
 
 /**
@@ -40,12 +41,16 @@ router.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
         const onlineUsers = await User.find({ isOnline: true })
             .select('username displayName role lastActive');
 
+        // Get admin control setting
+        const adminControlEnabled = await Settings.getAdminControlEnabled();
+
         // Get current admin user
         const user = await User.findById(req.session.userId).select('username displayName role');
 
         res.render('admin/dashboard', {
             title: 'Admin Dashboard',
             user,
+            adminControlEnabled,
             stats: {
                 userCount,
                 adminCount,
@@ -470,7 +475,6 @@ router.get('/admin/api/stats/realtime', isAuthenticated, isAdmin, async (req, re
  */
 router.get('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, res) => {
     try {
-        const Settings = require('../models/Settings');
         const videoSettings = await Settings.getVideoSettings();
         
         res.json({
@@ -489,7 +493,6 @@ router.get('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, re
  */
 router.post('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, res) => {
     try {
-        const Settings = require('../models/Settings');
         const { maxBitrate, resolution, maxFramerate, videoCpuOveruseDetection, audioEchoCancellation, audioNoiseSuppression } = req.body;
         
         await Settings.setVideoSettings({
@@ -509,6 +512,38 @@ router.post('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, r
         });
     } catch (error) {
         console.error(`[Admin] ❌ Save video settings error: ${error.message}`);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * GET /admin/api/settings/admin-control
+ * Get admin control enabled state
+ */
+router.get('/admin/api/settings/admin-control', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+        const enabled = await Settings.getAdminControlEnabled();
+        res.json({ success: true, data: { enabled } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * POST /admin/api/settings/admin-control
+ * Toggle admin control enabled/disabled
+ */
+router.post('/admin/api/settings/admin-control', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'Field "enabled" harus boolean' });
+        }
+        await Settings.setAdminControlEnabled(enabled, req.session.userId);
+        console.log(`[Admin] ✅ Admin control ${enabled ? 'ENABLED' : 'DISABLED'} by ${req.session.username}`);
+        res.json({ success: true, data: { enabled } });
+    } catch (error) {
+        console.error(`[Admin] ❌ Set admin control error: ${error.message}`);
         res.status(500).json({ success: false, message: error.message });
     }
 });

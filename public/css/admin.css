@@ -958,3 +958,100 @@ select.form-control {
     color: #3b82f6;
 }
 
+/* ============================================================
+   ADMIN CONTROL TOGGLE CARD
+   ============================================================ */
+
+.admin-control-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.admin-control-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.admin-control-title svg {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.admin-control-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.admin-control-info {
+    flex: 1;
+}
+
+.admin-control-desc {
+    margin: 0 0 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.admin-control-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    width: 54px;
+    height: 28px;
+    cursor: pointer;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 28px;
+    transition: background 0.25s ease;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.25s ease, background 0.25s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--success, #22c55e);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(26px) translateY(-50%);
+}
+
+.toggle-switch:hover .toggle-slider {
+    opacity: 0.9;
+}

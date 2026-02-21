@@ -248,6 +248,42 @@
                 </div>
             </div>
 
+            <!-- Admin Control Toggle -->
+            <div class="card admin-control-card">
+                <div class="card-header">
+                    <div class="admin-control-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 8v4l3 3"/>
+                        </svg>
+                        <h3>Admin Control</h3>
+                    </div>
+                    <span id="adminControlBadge" class="badge <%= adminControlEnabled ? 'badge-success' : 'badge-muted' %>">
+                        <%= adminControlEnabled ? 'AKTIF' : 'NONAKTIF' %>
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="admin-control-row">
+                        <div class="admin-control-info">
+                            <p class="admin-control-desc">
+                                Aktifkan atau nonaktifkan semua fungsi kontrol admin di dalam room video call.
+                            </p>
+                            <p class="admin-control-hint" id="adminControlHint">
+                                <% if (adminControlEnabled) { %>
+                                    ✅ Admin dapat mengontrol kamera, kualitas video, dan fokus user.
+                                <% } else { %>
+                                    ⚠️ Admin hanya sebagai peserta biasa — semua kontrol dinonaktifkan.
+                                <% } %>
+                            </p>
+                        </div>
+                        <label class="toggle-switch" title="Toggle Admin Control">
+                            <input type="checkbox" id="adminControlToggle" <%= adminControlEnabled ? 'checked' : '' %>>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
             <!-- Video Call Settings -->
             <div class="card">
                 <div class="card-header">
@@ -447,6 +483,46 @@
 
         // Load settings on page load
         loadVideoSettings();
+
+        // ====================================================================
+        // ADMIN CONTROL TOGGLE
+        // ====================================================================
+
+        const adminControlToggle = document.getElementById('adminControlToggle');
+        const adminControlBadge  = document.getElementById('adminControlBadge');
+        const adminControlHint   = document.getElementById('adminControlHint');
+
+        adminControlToggle.addEventListener('change', async () => {
+            const enabled = adminControlToggle.checked;
+
+            // Optimistic UI update
+            adminControlBadge.textContent   = enabled ? 'AKTIF' : 'NONAKTIF';
+            adminControlBadge.className     = `badge ${enabled ? 'badge-success' : 'badge-muted'}`;
+            adminControlHint.innerHTML      = enabled
+                ? '✅ Admin dapat mengontrol kamera, kualitas video, dan fokus user.'
+                : '⚠️ Admin hanya sebagai peserta biasa — semua kontrol dinonaktifkan.';
+
+            try {
+                const res  = await fetch('/admin/api/settings/admin-control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                console.log('[Admin] Admin control', enabled ? 'enabled' : 'disabled');
+            } catch (err) {
+                // Revert on error
+                adminControlToggle.checked  = !enabled;
+                adminControlBadge.textContent = !enabled ? 'AKTIF' : 'NONAKTIF';
+                adminControlBadge.className   = `badge ${!enabled ? 'badge-success' : 'badge-muted'}`;
+                adminControlHint.innerHTML    = !enabled
+                    ? '✅ Admin dapat mengontrol kamera, kualitas video, dan fokus user.'
+                    : '⚠️ Admin hanya sebagai peserta biasa — semua kontrol dinonaktifkan.';
+                console.error('[Admin] Failed to toggle admin control:', err.message);
+            }
+        });
     </script>
 </body>
 </html>

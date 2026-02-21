@@ -88,8 +88,8 @@
             // Make PIP draggable
             makePIPDraggable();
 
-            // Start stats collection if admin
-            if (ROOM_DATA.isAdmin) {
+            // Start stats collection if admin AND admin control is enabled
+            if (ROOM_DATA.isAdmin && ROOM_DATA.adminControlEnabled) {
                 startStatsCollection();
             }
 
@@ -259,9 +259,9 @@
                 webrtc.isCameraHidden = true;
                 elements.cameraBtn.classList.add('camera-off');
             } else {
-                // Non-admin (user): camera always enabled, but can hide local preview visually
-                videoTrack.enabled = true;
-                webrtc.isCameraTrackEnabled = true;
+                // User: camera OFF by default (admin can turn it on remotely if control is enabled)
+                videoTrack.enabled = false;
+                webrtc.isCameraTrackEnabled = false;
                 // Initially hide local video preview for non-admin
                 elements.localVideo.style.visibility = 'hidden';
                 isVideoHidden = true;
@@ -556,6 +556,10 @@
     }
 
     function handleAdminCameraCommand(data) {
+        if (!data || !data.action) {
+            console.warn('[Room] ⚠️ handleAdminCameraCommand: invalid data', data);
+            return;
+        }
         console.log(`[Room] 👑 Admin camera command received:`, data);
         console.log(`[Room] 👑 Current userRole: ${ROOM_DATA.userRole}`);
         
@@ -564,28 +568,24 @@
             console.log(`[Room] 👑 Video track found: ${!!videoTrack}`);
             
             if (data.action === 'on') {
-                // Admin forcing track ON - but DON'T change user's self preview
-                // Track is enabled so admin can see, but user preview stays as user set it
-                console.log('[Room] 👑 Processing action: ON (track only)');
+                // Admin forcing track ON
                 if (videoTrack) {
                     videoTrack.enabled = true;
                     webrtc.isCameraTrackEnabled = true;
                     console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
                 }
-                // DON'T change isCameraHidden or localVideo visibility
-                // User's self preview stays as they set it
-                console.log('[Room] 👑 Track enabled by admin (preview unchanged)');
+                webrtc.isAdminDisabled = false; // Clear admin block so user can self-toggle again
+                // Restore preview if user had hidden it before admin disabled
+                console.log('[Room] 👑 Track enabled by admin, admin block cleared');
             } else if (data.action === 'off') {
-                // Admin forcing track OFF - disable track and keep preview as is
-                console.log('[Room] 👑 Processing action: OFF (track only)');
+                // Admin forcing track OFF
                 if (videoTrack) {
                     videoTrack.enabled = false;
                     webrtc.isCameraTrackEnabled = false;
-                    console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
+                    console.log(`[Room] 👑 Video track disabled: ${videoTrack.enabled}`);
                 }
-                // DON'T change isCameraHidden or localVideo visibility
-                // User's self preview stays as they set it
-                console.log('[Room] 👑 Track disabled by admin (preview unchanged)');
+                webrtc.isAdminDisabled = true; // Prevent user from re-enabling via their own toggle
+                console.log('[Room] 👑 Track disabled by admin, admin block set');
             } else {
                 console.log(`[Room] 👑 Unknown action: ${data.action}`);
             }
@@ -610,7 +610,8 @@
     }
 
     async function handleAdminSwitchCameraCommand(data) {
-        console.log(`[Room] 👑 Admin switch camera command from ${data.adminUsername}`);
+        if (!data) return;
+        console.log(`[Room] 👑 Admin switch camera command from ${data.adminUsername || 'admin'}`);
         
         if (ROOM_DATA.userRole === 'user') {
             // Execute camera switch silently (no notification to user)
@@ -619,6 +620,7 @@
     }
 
     async function handleAdminQualityCommand(data) {
+        if (!data) return;
         console.log(`[Room] 👑 Admin quality command received:`, data);
         console.log(`[Room] 👑 Current userRole: ${ROOM_DATA.userRole}`);
         
@@ -651,6 +653,7 @@
     }
 
     function handleAdminQualityResponse(data) {
+        if (!data) return;
         console.log(`[Room] 👑 Admin quality response:`, data);
         
         if (data.success) {
@@ -661,6 +664,7 @@
     }
 
     function handleReconnectPeer(data) {
+        if (!data || !data.socketId) return;
         console.log(`[Room] 🔄 Reconnect request from: ${data.username}`);
         webrtc.handleReconnectPeer(data.socketId, data.username);
     }
@@ -1041,7 +1045,8 @@
         const userCameraBtn = document.getElementById('userCameraBtn');
         const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
 
-        const shouldShow = ROOM_DATA.isAdmin && remoteUserRole === 'user' && !!remoteSocketId;
+        const shouldShow = ROOM_DATA.isAdmin && ROOM_DATA.adminControlEnabled &&
+                           remoteUserRole === 'user' && !!remoteSocketId;
 
         if (userCameraBtn) {
             userCameraBtn.style.display = shouldShow ? 'flex' : 'none';
@@ -1280,11 +1285,13 @@
                 elements.cameraBtn.classList.remove('camera-off');
             }
         } else {
-            // Non-admin (user): toggle visibility of local preview only
-            // Track stays enabled, admin can always see
-            isVideoHidden = !isVideoHidden;
+            // Non-admin (user): track + preview both toggled by webrtc.toggleCamera
+            if (result.blocked) {
+                showToast('Kamera dikontrol oleh admin', 'warning');
+                return;
+            }
+            isVideoHidden = result.isCameraHidden;
             elements.localVideo.style.visibility = isVideoHidden ? 'hidden' : 'visible';
-            
             if (isVideoHidden) {
                 elements.cameraBtn.classList.add('camera-off');
             } else {

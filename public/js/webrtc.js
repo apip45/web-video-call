@@ -494,17 +494,31 @@ class WebRTCHandler {
                     }
                 }
             } else {
-                // Non-admin (user): check if admin has disabled camera
+                // Non-admin (user): respect admin's disable command
                 if (this.isAdminDisabled) {
                     console.log('[WebRTC] 📹 User Camera: BLOCKED - Admin has disabled camera');
                     return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled, blocked: true };
                 }
-                
-                // Only toggle visual, track stays always enabled
-                this.isCameraHidden = !this.isCameraHidden;
-                videoTrack.enabled = true; // Always keep enabled for admin to see
-                
-                console.log(`[WebRTC] 📹 User Camera: visual=${this.isCameraHidden ? 'HIDDEN' : 'VISIBLE'}, track=ALWAYS ON`);
+
+                // Toggle actual track + visual state (camera starts OFF by default)
+                this.isCameraTrackEnabled = !this.isCameraTrackEnabled;
+                videoTrack.enabled = this.isCameraTrackEnabled;
+                this.isCameraHidden = !this.isCameraTrackEnabled;
+
+                console.log(`[WebRTC] 📹 User Camera: track=${this.isCameraTrackEnabled ? 'ON' : 'OFF'}`);
+
+                // Refresh sender track when re-enabling so remote peer receives video
+                if (this.isCameraTrackEnabled && this.peerConnection) {
+                    const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                    if (sender) {
+                        try {
+                            await sender.replaceTrack(videoTrack);
+                            console.log('[WebRTC] 📹 User: Refreshed video track on sender');
+                        } catch (err) {
+                            console.warn('[WebRTC] ⚠️ Could not refresh track:', err.message);
+                        }
+                    }
+                }
             }
             
             // Notify peer with status

@@ -130,6 +130,14 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
         const videoSettings = await Settings.getVideoSettings();
         const resolutionDimensions = Settings.getResolutionDimensions(videoSettings.resolution);
 
+        // Default to true (enabled) if DB fetch fails — never block the room page
+        let adminControlEnabled = true;
+        try {
+            adminControlEnabled = await Settings.getAdminControlEnabled();
+        } catch (e) {
+            console.warn('[Room] ⚠️ Could not fetch adminControlEnabled, defaulting to true:', e.message);
+        }
+
         res.render('room', {
             title: `Video Call - ${room.name}`,
             room: room,
@@ -138,6 +146,7 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
             username: req.session.displayName || req.session.username,
             userRole: req.session.role,
             isAdmin: req.session.role === 'admin',
+            adminControlEnabled,
             webrtcMode: webrtcMode,
             ionSFUConfig: JSON.stringify(ionSFUConfig),
             videoSettings: JSON.stringify({

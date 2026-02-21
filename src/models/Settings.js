@@ -88,6 +88,23 @@ settingsSchema.statics.getVideoSettings = async function() {
 };
 
 /**
+ * Get admin control enabled state
+ * @returns {Promise<boolean>}
+ */
+settingsSchema.statics.getAdminControlEnabled = async function() {
+    return this.get('adminControlEnabled', true);
+};
+
+/**
+ * Set admin control enabled state
+ * @param {boolean} enabled
+ * @param {string} userId
+ */
+settingsSchema.statics.setAdminControlEnabled = async function(enabled, userId) {
+    return this.set('adminControlEnabled', Boolean(enabled), userId);
+};
+
+/**
  * Set video settings
  * @param {Object} settings - Video settings object
  * @param {string} userId - User who updated
