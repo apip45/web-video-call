@@ -493,7 +493,7 @@ router.get('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, re
  */
 router.post('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, res) => {
     try {
-        const { maxBitrate, resolution, maxFramerate, videoCpuOveruseDetection, audioEchoCancellation, audioNoiseSuppression } = req.body;
+        const { maxBitrate, resolution, maxFramerate, videoCpuOveruseDetection, audioEchoCancellation, audioNoiseSuppression, preferredVideoCodec } = req.body;
         
         await Settings.setVideoSettings({
             maxBitrate,
@@ -501,7 +501,8 @@ router.post('/admin/api/settings/video', isAuthenticated, isAdmin, async (req, r
             maxFramerate,
             videoCpuOveruseDetection,
             audioEchoCancellation,
-            audioNoiseSuppression
+            audioNoiseSuppression,
+            preferredVideoCodec
         }, req.session.userId);
         
         console.log(`[Admin] ✅ Video settings updated by ${req.session.username}`);

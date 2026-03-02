@@ -81,7 +81,8 @@ class WebRTCHandler {
             height: 720,
             videoCpuOveruseDetection: true,
             audioEchoCancellation: true,
-            audioNoiseSuppression: true
+            audioNoiseSuppression: true,
+            preferredVideoCodec: 'auto'
         };
         console.log(`[WebRTC] ⚙️ Video settings:`, this.videoSettings);
     }
@@ -696,6 +697,14 @@ class WebRTCHandler {
                     this.applyBitrateConstraint(sender);
                 }
             });
+
+            // Apply codec preferences to the video transceiver BEFORE createOffer/createAnswer.
+            // getTransceivers() is available as soon as addTrack() is called.
+            const videoTransceiver = this.peerConnection.getTransceivers()
+                .find(t => t.sender?.track?.kind === 'video');
+            if (videoTransceiver) {
+                this.applyCodecPreferences(videoTransceiver);
+            }
         }
 
         // Handle ICE candidates with timeout
@@ -753,6 +762,58 @@ class WebRTCHandler {
 
         console.log('[WebRTC] ✅ Peer connection created');
         return this.peerConnection;
+    }
+
+    /**
+     * Apply codec preferences to a video transceiver.
+     * Must be called BEFORE createOffer / createAnswer.
+     * @param {RTCRtpTransceiver} transceiver
+     */
+    applyCodecPreferences(transceiver) {
+        const preferred = (this.videoSettings.preferredVideoCodec || 'auto').toLowerCase();
+        if (preferred === 'auto') return; // Leave browser defaults untouched
+
+        // RTCRtpSender.getCapabilities is widely supported (Chrome 69+, Firefox, Safari 15+)
+        const capabilities = RTCRtpSender.getCapabilities('video');
+        if (!capabilities || !capabilities.codecs || !capabilities.codecs.length) {
+            console.warn('[WebRTC] ⚠️ RTCRtpSender.getCapabilities not available — codec preference skipped');
+            return;
+        }
+
+        const mimeMatch = `video/${preferred}`;
+        const preferred_codecs = capabilities.codecs.filter(c =>
+            c.mimeType.toLowerCase() === mimeMatch
+        );
+        const other_codecs = capabilities.codecs.filter(c =>
+            c.mimeType.toLowerCase() !== mimeMatch
+        );
+
+        if (!preferred_codecs.length) {
+            console.warn(`[WebRTC] ⚠️ Codec "${preferred}" not supported by browser — keeping defaults`);
+            return;
+        }
+
+        // For H.264: sort hardware-friendly profiles first
+        // Constrained Baseline (42e0xx / 4240xx) → Baseline (42xx) → Main (4d00xx) → High
+        if (preferred === 'h264') {
+            preferred_codecs.sort((a, b) => {
+                const getProfilePriority = (codec) => {
+                    const fmtp = (codec.sdpFmtpLine || '').toLowerCase();
+                    if (fmtp.includes('profile-level-id=42e0') || fmtp.includes('profile-level-id=4240')) return 0;
+                    if (fmtp.includes('profile-level-id=42')) return 1;
+                    if (fmtp.includes('profile-level-id=4d')) return 2;
+                    return 3;
+                };
+                return getProfilePriority(a) - getProfilePriority(b);
+            });
+        }
+
+        try {
+            transceiver.setCodecPreferences([...preferred_codecs, ...other_codecs]);
+            console.log(`[WebRTC] 🎥 Codec preference applied: ${preferred.toUpperCase()} (${preferred_codecs.length} variant(s) found)`);
+        } catch (e) {
+            console.warn('[WebRTC] ⚠️ setCodecPreferences failed:', e.message);
+        }
     }
 
     /**

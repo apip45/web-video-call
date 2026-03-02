@@ -332,6 +332,19 @@
                                 <small class="form-hint">FPS lebih rendah = hemat bandwidth & CPU</small>
                             </div>
 
+                            <!-- Video Codec -->
+                            <div class="form-group">
+                                <label for="preferredVideoCodec">Video Codec</label>
+                                <select id="preferredVideoCodec" name="preferredVideoCodec" class="form-control">
+                                    <option value="auto">Auto (Browser Default)</option>
+                                    <option value="h264">H.264 — hemat CPU, cocok mobile low-spec ✅</option>
+                                    <option value="vp8">VP8 — kompatibel luas, software encode</option>
+                                    <option value="vp9">VP9 — kualitas lebih baik dari VP8, CPU lebih tinggi</option>
+                                    <option value="av1">AV1 — efisiensi terbaik, CPU sangat tinggi</option>
+                                </select>
+                                <small class="form-hint">H.264 direkomendasikan untuk perangkat mobile dengan spesifikasi rendah karena didukung hardware encoder</small>
+                            </div>
+
                             <!-- CPU Overuse Detection -->
                             <div class="form-group">
                                 <label class="checkbox-label">
@@ -410,6 +423,7 @@
                     document.getElementById('maxBitrate').value = settings.maxBitrate;
                     document.getElementById('resolution').value = settings.resolution;
                     document.getElementById('maxFramerate').value = settings.maxFramerate;
+                    document.getElementById('preferredVideoCodec').value = settings.preferredVideoCodec || 'auto';
                     document.getElementById('videoCpuOveruseDetection').checked = settings.videoCpuOveruseDetection;
                     document.getElementById('audioEchoCancellation').checked = settings.audioEchoCancellation;
                     document.getElementById('audioNoiseSuppression').checked = settings.audioNoiseSuppression;
@@ -436,6 +450,7 @@
                     maxBitrate: parseInt(document.getElementById('maxBitrate').value),
                     resolution: document.getElementById('resolution').value,
                     maxFramerate: parseInt(document.getElementById('maxFramerate').value),
+                    preferredVideoCodec: document.getElementById('preferredVideoCodec').value,
                     videoCpuOveruseDetection: document.getElementById('videoCpuOveruseDetection').checked,
                     audioEchoCancellation: document.getElementById('audioEchoCancellation').checked,
                     audioNoiseSuppression: document.getElementById('audioNoiseSuppression').checked

@@ -80,7 +80,8 @@ settingsSchema.statics.getVideoSettings = async function() {
         maxFramerate: 30, // fps
         videoCpuOveruseDetection: true,
         audioEchoCancellation: true,
-        audioNoiseSuppression: true
+        audioNoiseSuppression: true,
+        preferredVideoCodec: 'auto' // auto, h264, vp8, vp9, av1
     };
     
     const settings = await this.get('videoSettings', defaultSettings);
@@ -118,7 +119,10 @@ settingsSchema.statics.setVideoSettings = async function(settings, userId) {
         maxFramerate: Math.min(Math.max(parseInt(settings.maxFramerate) || 30, 10), 60),
         videoCpuOveruseDetection: Boolean(settings.videoCpuOveruseDetection),
         audioEchoCancellation: Boolean(settings.audioEchoCancellation),
-        audioNoiseSuppression: Boolean(settings.audioNoiseSuppression)
+        audioNoiseSuppression: Boolean(settings.audioNoiseSuppression),
+        preferredVideoCodec: ['auto', 'h264', 'vp8', 'vp9', 'av1'].includes(settings.preferredVideoCodec)
+            ? settings.preferredVideoCodec
+            : 'auto'
     };
     
     return this.set('videoSettings', validatedSettings, userId);
