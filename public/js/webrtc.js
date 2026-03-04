@@ -55,6 +55,10 @@ class WebRTCHandler {
         this.ICE_GATHERING_TIMEOUT = 15000; // 15 seconds
         this.CONNECTION_TIMEOUT = 20000; // 20 seconds
 
+        // Audio restart flag: set to true when an active connection is closed (reconnect scenario).
+        // Used to restore Chrome Mobile "communication audio" mode (earpiece routing) after reconnect.
+        this._audioRestartNeeded = false;
+
         // Callbacks
         this.onRemoteStream = options.onRemoteStream || (() => {});
         this.onConnectionStateChange = options.onConnectionStateChange || (() => {});
@@ -439,6 +443,67 @@ class WebRTCHandler {
             // Revert state on error
             this.usingSpeaker = !this.usingSpeaker;
             return this.usingSpeaker;
+        }
+    }
+
+    /**
+     * Restart the local audio track to restore Chrome Mobile call audio routing.
+     *
+     * ROOT CAUSE: Chrome Mobile sets audio to "voice communication" mode (earpiece)
+     * when getUserMedia is called with echoCancellation:true. When the peer connection
+     * is torn down/rebuilt during a reconnect, Chrome exits this mode and routes audio
+     * to the media speaker instead. The ONLY way to force Chrome back into communication
+     * mode is to call getUserMedia again — which is exactly what this method does.
+     *
+     * Called automatically after every reconnect (when _audioRestartNeeded is true).
+     */
+    async restartAudioTrack() {
+        try {
+            console.log('[WebRTC] 🎤 Restarting audio track to restore call audio routing (Chrome Mobile fix)...');
+
+            // Re-request audio via getUserMedia — this is the key action that forces
+            // Chrome back into "voice communication" mode (earpiece routing)
+            const newAudioStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+
+            const newAudioTrack = newAudioStream.getAudioTracks()[0];
+            if (!newAudioTrack) {
+                console.warn('[WebRTC] ⚠️ restartAudioTrack: no audio track returned');
+                return false;
+            }
+
+            // Preserve current mute state on the new track
+            newAudioTrack.enabled = !this.isMuted;
+
+            // Replace old audio track in localStream
+            if (this.localStream) {
+                const oldAudioTrack = this.localStream.getAudioTracks()[0];
+                if (oldAudioTrack) {
+                    oldAudioTrack.stop();
+                    this.localStream.removeTrack(oldAudioTrack);
+                }
+                this.localStream.addTrack(newAudioTrack);
+            }
+
+            // Replace audio sender track in the active peer connection
+            if (this.peerConnection) {
+                const audioSender = this.peerConnection.getSenders().find(s => s.track?.kind === 'audio');
+                if (audioSender) {
+                    await audioSender.replaceTrack(newAudioTrack);
+                    console.log('[WebRTC] ✅ Audio sender track replaced in peer connection');
+                }
+            }
+
+            console.log('[WebRTC] ✅ Audio track restarted — call audio routing (earpiece) restored');
+            return true;
+        } catch (error) {
+            console.warn('[WebRTC] ⚠️ restartAudioTrack failed:', error.message);
+            return false;
         }
     }
 
@@ -854,6 +919,16 @@ class WebRTCHandler {
                 // Log ICE candidate yang digunakan untuk debugging
                 this.logActiveICECandidate();
                 
+                // Restore Chrome Mobile call audio routing after reconnect.
+                // When closePeerConnection() was called on an active connection, Chrome exits
+                // "voice communication" mode (earpiece). Re-requesting getUserMedia for audio
+                // forces Chrome back into communication mode so audio goes to earpiece, not speaker.
+                if (this._audioRestartNeeded) {
+                    this._audioRestartNeeded = false;
+                    // Delay slightly to let the connection fully stabilize first
+                    setTimeout(() => this.restartAudioTrack(), 800);
+                }
+
                 // Send initial media status when connection is established
                 // This ensures remote peer knows our current camera/mic state
                 setTimeout(() => {
@@ -1349,6 +1424,11 @@ class WebRTCHandler {
             console.log('[WebRTC] 🔒 Peer connection closed');
         }
         this.remoteStream = null;
+        // If we were actively connected, flag that audio track needs restart on next connect.
+        // This restores Chrome Mobile "communication audio" mode (earpiece routing) after reconnect.
+        if (this.isConnected) {
+            this._audioRestartNeeded = true;
+        }
         this.isConnected = false;
         this.pendingIceCandidates = []; // Clear pending candidates
         this.remoteSocketId = null;
@@ -1385,6 +1465,9 @@ class WebRTCHandler {
             this.closePeerConnection();
         }
         
+        // Full cleanup — no reconnect will happen, so suppress any pending audio restart
+        this._audioRestartNeeded = false;
+
         this.stopLocalStream();
         this.isConnected = false;
         this.reconnectAttempts = 0;

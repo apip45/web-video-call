@@ -218,6 +218,14 @@
                 elements.remoteVideo.srcObject = stream;
                 hideWaitingState();
                 hideConnectionStatus();
+                // Explicitly call play() after setting srcObject.
+                // On Chrome Mobile, after a reconnect the browser may not auto-play the new
+                // stream, which prevents it from registering in "call audio" mode (earpiece).
+                elements.remoteVideo.play().catch(err => {
+                    // Autoplay may be blocked before user interaction — not critical,
+                    // the browser will play once the user interacts with the page.
+                    console.warn('[Room] ⚠️ remoteVideo.play() blocked:', err.message);
+                });
             },
 
             onConnectionStateChange: (state) => {
@@ -396,7 +404,15 @@
         // Close any existing peer connection first
         if (webrtc.peerConnection) {
             console.log('[Room] 🔄 Closing existing peer connection before creating new one');
+            // If there was an active connection, audio restart will be triggered automatically
+            // by _audioRestartNeeded flag set inside closePeerConnection()
             webrtc.closePeerConnection();
+        } else {
+            // No existing connection but we're handling a new user-joined:
+            // this can happen after a disconnect where the watchdog/ICE already cleaned up
+            // the peer connection but Chrome still lost its communication audio mode.
+            // Force audio restart on the next successful connection.
+            webrtc._audioRestartNeeded = true;
         }
         
         // Wait a bit for cleanup to complete
