@@ -274,6 +274,39 @@
                 </button>
             </div>
         </div>
+
+        <!-- Audio Reset Panel (Admin Only) -->
+        <div class="audio-panel" id="audioPanel">
+            <div class="audio-panel-header">
+                <span>🔊 Audio Reset</span>
+                <button class="btn-close" onclick="toggleAudioPanel()">&times;</button>
+            </div>
+            <div class="audio-panel-body">
+                <div class="audio-reset-desc">
+                    Gunakan jika audio user keluar dari <strong>speaker biasa</strong> (bukan earpiece telepon) setelah reconnect. Reset memaksa Chrome Mobile kembali ke mode komunikasi.
+                </div>
+                <!-- Shown when user is connected -->
+                <div class="audio-reset-user-section" id="audioResetUserSection" style="display:none">
+                    <div class="audio-reset-status" id="audioResetStatus">Siap untuk reset</div>
+                    <button class="audio-reset-btn" id="audioResetBtn" onclick="adminResetAudio()">
+                        <svg class="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="1 4 1 10 7 10"/>
+                            <path d="M3.51 15a9 9 0 1 0 .49-3.64"/>
+                        </svg>
+                        <span id="audioResetBtnText">Reset Audio User</span>
+                    </button>
+                </div>
+                <!-- Shown when no user connected -->
+                <div class="audio-no-user" id="audioResetNoUser">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    Belum ada user yang terhubung
+                </div>
+            </div>
+        </div>
         <% } %>
 
         <!-- Mini Stats (All Users) -->
@@ -430,6 +463,15 @@
                     <line x1="12" y1="19" x2="12" y2="22"/>
                     <line x1="2" y1="12" x2="5" y2="12"/>
                     <line x1="19" y1="12" x2="22" y2="12"/>
+                </svg>
+            </button>
+
+            <!-- Audio Reset (Admin) -->
+            <button class="control-btn" id="audioBtn" onclick="toggleAudioPanel()" title="Reset Audio User">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
                 </svg>
             </button>
 

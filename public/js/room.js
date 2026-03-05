@@ -24,6 +24,7 @@
     let isRemoteBlank = false; // For admin to blank remote video (visual)
     let isUserCameraDisabled = false; // For admin to control user camera
     let statsInterval = null;
+    let audioResetTimeout = null; // Timeout for admin audio reset confirmation
     // Bandwidth delta tracking (for realtime kbps calculation)
     let prevBytesSent = 0;
     let prevBytesReceived = 0;
@@ -187,6 +188,12 @@
         socket.on('ping', () => {
             socket.emit('pong');
         });
+
+        // Audio reset: admin-triggered force restart (user side)
+        socket.on('force-audio-reset', handleForceAudioReset);
+
+        // Audio reset: confirmation from user (admin side)
+        socket.on('audio-reset-confirmed', handleAudioResetConfirmed);
 
         // Errors
         socket.on('error', (data) => {
@@ -397,6 +404,8 @@
 
         // Show / hide admin controls based on who just joined
         updateAdminControlsVisibility();
+        // Refresh audio panel user section if open
+        updateAudioPanelUserSection();
 
         // Update remote username display
         elements.remoteUsername.textContent = data.username;
@@ -441,6 +450,14 @@
         remoteSocketId = null;
         remoteUserRole = null;
         updateAdminControlsVisibility();
+        // Refresh audio panel user section (will switch to "no user" state)
+        updateAudioPanelUserSection();
+        // If an audio reset was pending, cancel it
+        if (audioResetTimeout) {
+            clearTimeout(audioResetTimeout);
+            audioResetTimeout = null;
+            resetAudioResetBtnToDefault();
+        }
 
         // Also clear left-over active/disabled class from user camera button
         const userCameraBtn = document.getElementById('userCameraBtn');
@@ -690,6 +707,49 @@
     }
 
     // ==========================================================================
+    // AUDIO RESET HANDLERS
+    // ==========================================================================
+
+    /**
+     * User side: admin commanded an audio track restart.
+     * Calls restartAudioTrack() then reports result back to server.
+     */
+    async function handleForceAudioReset(data) {
+        console.log(`[Room] 🔊 Force audio reset received from admin`);
+        if (!webrtc) {
+            socket.emit('audio-reset-done', { roomId: ROOM_DATA.roomId, success: false });
+            return;
+        }
+        const success = await webrtc.restartAudioTrack();
+        socket.emit('audio-reset-done', { roomId: ROOM_DATA.roomId, success });
+        if (success) {
+            showToast('🔊 Audio reset oleh admin — mengembalikan ke mode komunikasi', 'info');
+        } else {
+            console.warn('[Room] ⚠️ Audio reset gagal di sisi user');
+        }
+    }
+
+    /**
+     * Admin side: confirmation that user completed (or failed) the audio reset.
+     */
+    function handleAudioResetConfirmed(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        // Clear pending timeout regardless of result
+        if (audioResetTimeout) {
+            clearTimeout(audioResetTimeout);
+            audioResetTimeout = null;
+        }
+        if (data.success) {
+            setAudioResetBtnState('success', '✓ Audio berhasil di-reset');
+            showToast(`✅ Audio ${data.username || 'user'} berhasil di-reset`, 'success');
+        } else {
+            setAudioResetBtnState('error', '✗ Reset gagal di sisi user');
+            showToast(`❌ Audio reset gagal di perangkat user`, 'error');
+        }
+        setTimeout(resetAudioResetBtnToDefault, 3000);
+    }
+
+    // ==========================================================================
     // FOCUS CONTROL HANDLERS
     // ==========================================================================
 
@@ -859,6 +919,8 @@
         document.getElementById('qualityBtn')?.classList.remove('active');
         document.getElementById('statsPanel')?.classList.remove('visible');
         document.getElementById('statsBtn')?.classList.remove('active');
+        document.getElementById('audioPanel')?.classList.remove('visible');
+        document.getElementById('audioBtn')?.classList.remove('active');
 
         if (isOpen) {
             panel.classList.remove('visible');
@@ -1046,6 +1108,161 @@
             void indicator.offsetWidth;
             indicator.classList.add('locked');
         }, 550);
+    }
+
+    // ==========================================================================
+    // AUDIO RESET PANEL (Admin Only)
+    // ==========================================================================
+
+    /**
+     * Toggle the Audio Reset panel open/close.
+     * Closes all other panels when opening (consistent UX).
+     */
+    window.toggleAudioPanel = function() {
+        if (!ROOM_DATA.isAdmin) return;
+        const panel = document.getElementById('audioPanel');
+        const btn   = document.getElementById('audioBtn');
+        if (!panel) return;
+
+        const isOpen = panel.classList.contains('visible');
+
+        // Close all other panels first (use toggleFocusPanel for proper POI cleanup)
+        document.getElementById('qualityPanel')?.classList.remove('visible');
+        document.getElementById('qualityBtn')?.classList.remove('active');
+        document.getElementById('statsPanel')?.classList.remove('visible');
+        document.getElementById('statsBtn')?.classList.remove('active');
+        const focusPanelEl = document.getElementById('focusPanel');
+        if (focusPanelEl && focusPanelEl.classList.contains('visible')) {
+            window.toggleFocusPanel();
+        }
+
+        if (isOpen) {
+            panel.classList.remove('visible');
+            btn?.classList.remove('active');
+        } else {
+            panel.classList.add('visible');
+            btn?.classList.add('active');
+            updateAudioPanelUserSection();
+        }
+    };
+
+    /**
+     * Sync audio panel "user section" vs "no user" visibility.
+     * Called whenever remoteSocketId / remoteUserRole changes.
+     */
+    function updateAudioPanelUserSection() {
+        const userSection   = document.getElementById('audioResetUserSection');
+        const noUserSection = document.getElementById('audioResetNoUser');
+        if (!userSection || !noUserSection) return;
+
+        const hasUser = !!remoteSocketId && remoteUserRole === 'user';
+        userSection.style.display   = hasUser ? 'flex' : 'none';
+        noUserSection.style.display = hasUser ? 'none' : 'flex';
+        if (hasUser) {
+            userSection.style.flexDirection = 'column';
+            userSection.style.gap = 'var(--spacing-sm)';
+        }
+    }
+
+    /**
+     * Admin: emit reset command, start 6-second fallback timeout.
+     */
+    window.adminResetAudio = function() {
+        if (!ROOM_DATA.isAdmin || !remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+        // Cancel any previous pending timeout
+        if (audioResetTimeout) {
+            clearTimeout(audioResetTimeout);
+            audioResetTimeout = null;
+        }
+
+        setAudioResetBtnState('loading', 'Mengirim reset...');
+
+        socket.emit('admin-reset-audio', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId
+        });
+
+        // Fallback: if no confirmation within 6 seconds, show timeout error
+        audioResetTimeout = setTimeout(() => {
+            audioResetTimeout = null;
+            setAudioResetBtnState('error', '✗ Tidak ada respon dari user (timeout)');
+            setTimeout(resetAudioResetBtnToDefault, 3000);
+        }, 6000);
+
+        console.log(`[Room] 🔊 Admin sent audio reset to: ${remoteSocketId}`);
+    };
+
+    /**
+     * Update the audio reset button and status text.
+     * @param {'loading'|'success'|'error'} state
+     * @param {string} text
+     */
+    function setAudioResetBtnState(state, text) {
+        const btn       = document.getElementById('audioResetBtn');
+        const btnText   = document.getElementById('audioResetBtnText');
+        const statusEl  = document.getElementById('audioResetStatus');
+        const resetIcon = btn?.querySelector('.reset-icon');
+        if (!btn || !btnText) return;
+
+        // Remove previous state classes
+        btn.classList.remove('success', 'error');
+        // Remove any old spinner
+        btn.querySelector('.spin-icon')?.remove();
+
+        if (state === 'loading') {
+            btn.disabled = true;
+            if (resetIcon) resetIcon.style.display = 'none';
+            // Insert spinner SVG before text
+            const spinner = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            spinner.classList.add('spin-icon');
+            spinner.setAttribute('viewBox', '0 0 24 24');
+            spinner.setAttribute('fill', 'none');
+            spinner.setAttribute('stroke', 'currentColor');
+            spinner.setAttribute('stroke-width', '2');
+            spinner.style.cssText = 'width:1rem;height:1rem;flex-shrink:0;animation:spin 1s linear infinite';
+            spinner.innerHTML = '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>';
+            btn.insertBefore(spinner, btn.firstChild);
+            btnText.textContent = text;
+            if (statusEl) { statusEl.textContent = 'Menunggu konfirmasi dari user...'; statusEl.className = 'audio-reset-status loading'; }
+        } else if (state === 'success') {
+            btn.disabled = false;
+            if (resetIcon) resetIcon.style.display = '';
+            btn.classList.add('success');
+            btnText.textContent = text;
+            if (statusEl) {
+                const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                statusEl.textContent = `✓ Berhasil direset pada ${time}`;
+                statusEl.className = 'audio-reset-status success';
+            }
+        } else { // error
+            btn.disabled = false;
+            if (resetIcon) resetIcon.style.display = '';
+            btn.classList.add('error');
+            btnText.textContent = text;
+            if (statusEl) { statusEl.textContent = text; statusEl.className = 'audio-reset-status error'; }
+        }
+    }
+
+    /** Reset button back to its default (idle) appearance. */
+    function resetAudioResetBtnToDefault() {
+        const btn      = document.getElementById('audioResetBtn');
+        const btnText  = document.getElementById('audioResetBtnText');
+        const statusEl = document.getElementById('audioResetStatus');
+        if (!btn) return;
+        btn.classList.remove('success', 'error');
+        btn.disabled = false;
+        btn.querySelector('.spin-icon')?.remove();
+        const resetIcon = btn.querySelector('.reset-icon');
+        if (resetIcon) resetIcon.style.display = '';
+        if (btnText) btnText.textContent = 'Reset Audio User';
+        // Only clear status text if it's not in a permanent "last success" state
+        if (statusEl && statusEl.classList.contains('error')) {
+            statusEl.textContent = 'Siap untuk reset';
+            statusEl.className = 'audio-reset-status';
+        }
     }
 
     // ==========================================================================
@@ -1444,6 +1661,9 @@
         if (adminPOIActive) deactivatePOI();
         document.getElementById('focusPanel')?.classList.remove('visible');
         document.getElementById('focusBtn')?.classList.remove('active');
+        document.getElementById('audioPanel')?.classList.remove('visible');
+        document.getElementById('audioBtn')?.classList.remove('active');
+        if (audioResetTimeout) { clearTimeout(audioResetTimeout); audioResetTimeout = null; }
         adminFocusCapabilities = null;
         
         if (webrtc) {
@@ -1496,6 +1716,8 @@
             if (focusPanel && focusPanel.classList.contains('visible')) {
                 window.toggleFocusPanel();
             }
+            document.getElementById('audioPanel')?.classList.remove('visible');
+            document.getElementById('audioBtn')?.classList.remove('active');
         }
     };
 
@@ -1521,7 +1743,9 @@
             if (focusPanel && focusPanel.classList.contains('visible')) {
                 window.toggleFocusPanel();
             }
-            
+            document.getElementById('audioPanel')?.classList.remove('visible');
+            document.getElementById('audioBtn')?.classList.remove('active');
+
             // Initialize with current settings
             initializeQualitySettings();
         }

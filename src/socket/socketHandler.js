@@ -708,6 +708,72 @@ const setupSocketHandlers = (io) => {
         });
 
         // =========================================================================
+        // ADMIN AUDIO RESET
+        // =========================================================================
+
+        /**
+         * Admin → Server: request forcing the user to do a restartAudioTrack().
+         * Validates admin role + adminControlEnabled, then forwards to target user.
+         */
+        socket.on('admin-reset-audio', async (data) => {
+            try {
+                if (socket.userRole !== 'admin') {
+                    console.warn(`[Socket] ⚠️ Non-admin tried admin-reset-audio: ${socket.username}`);
+                    return;
+                }
+                if (!await guardAdminControl(socket, null)) return;
+
+                const { roomId, targetSocketId } = data || {};
+                if (!roomId || !targetSocketId) return;
+
+                // Confirm the target is actually a user in this room
+                const room = await Room.findOne({ roomId });
+                if (!room) return;
+                const target = room.participants.find(
+                    p => p.socketId === targetSocketId && p.role === 'user'
+                );
+                if (!target) {
+                    console.warn(`[Socket] ⚠️ admin-reset-audio: target user not found in room ${roomId}`);
+                    return;
+                }
+
+                io.to(targetSocketId).emit('force-audio-reset', {
+                    by: socket.username
+                });
+                console.log(`[Socket] 🔊 Admin ${socket.username} triggered audio reset for ${target.username} (${targetSocketId})`);
+            } catch (err) {
+                console.error(`[Socket] ❌ admin-reset-audio error: ${err.message}`);
+            }
+        });
+
+        /**
+         * User → Server: result of the forced restartAudioTrack().
+         * Server forwards 'audio-reset-confirmed' to the admin.
+         */
+        socket.on('audio-reset-done', async (data) => {
+            try {
+                const { roomId, success } = data || {};
+                if (!roomId) return;
+
+                const room = await Room.findOne({ roomId });
+                if (!room) return;
+
+                // Find the admin participant
+                const admin = room.participants.find(p => p.role === 'admin');
+                if (!admin) return;
+
+                io.to(admin.socketId).emit('audio-reset-confirmed', {
+                    success: !!success,
+                    username: socket.username,
+                    socketId: socket.id
+                });
+                console.log(`[Socket] 🔊 Audio reset by ${socket.username}: ${success ? '✅ OK' : '❌ FAILED'}`);
+            } catch (err) {
+                console.error(`[Socket] ❌ audio-reset-done error: ${err.message}`);
+            }
+        });
+
+        // =========================================================================
         // LEAVE ROOM
         // =========================================================================
         socket.on('leave-room', async (data) => {
