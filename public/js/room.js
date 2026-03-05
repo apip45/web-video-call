@@ -24,7 +24,8 @@
     let isRemoteBlank = false; // For admin to blank remote video (visual)
     let isUserCameraDisabled = false; // For admin to control user camera
     let statsInterval = null;
-    let audioResetTimeout = null; // Timeout for admin audio reset confirmation
+    let audioResetTimeout = null;  // Timeout for admin audio soft-reset confirmation
+    let forceRejoinTimeout = null; // Timeout for admin force-rejoin pending state
     // Bandwidth delta tracking (for realtime kbps calculation)
     let prevBytesSent = 0;
     let prevBytesReceived = 0;
@@ -194,6 +195,23 @@
 
         // Audio reset: confirmation from user (admin side)
         socket.on('audio-reset-confirmed', handleAudioResetConfirmed);
+
+        // Guard blocked feedback (admin control disabled or user gone)
+        socket.on('audio-reset-blocked', (data) => {
+            if (!ROOM_DATA.isAdmin) return;
+            if (audioResetTimeout) { clearTimeout(audioResetTimeout); audioResetTimeout = null; }
+            setAudioResetBtnState('error', '\u2717 ' + (data?.message || 'Perintah ditolak server'));
+            setTimeout(resetAudioResetBtnToDefault, 3000);
+        });
+        socket.on('force-rejoin-blocked', (data) => {
+            if (!ROOM_DATA.isAdmin) return;
+            if (forceRejoinTimeout) { clearTimeout(forceRejoinTimeout); forceRejoinTimeout = null; }
+            setRejoinBtnState('error', '\u2717 ' + (data?.message || 'Perintah ditolak server'));
+            setTimeout(() => setRejoinBtnState('idle'), 3000);
+        });
+
+        // Force rejoin: admin commanded page reload (user side)
+        socket.on('force-rejoin', handleForceRejoin);
 
         // Errors
         socket.on('error', (data) => {
@@ -406,6 +424,13 @@
         updateAdminControlsVisibility();
         // Refresh audio panel user section if open
         updateAudioPanelUserSection();
+        // If a force-rejoin was pending, this join is the confirmation
+        if (forceRejoinTimeout) {
+            clearTimeout(forceRejoinTimeout);
+            forceRejoinTimeout = null;
+            showToast(`✅ ${data.username} berhasil rejoin — audio seharusnya normal`, 'success');
+            setRejoinBtnState('idle');
+        }
 
         // Update remote username display
         elements.remoteUsername.textContent = data.username;
@@ -452,11 +477,17 @@
         updateAdminControlsVisibility();
         // Refresh audio panel user section (will switch to "no user" state)
         updateAudioPanelUserSection();
-        // If an audio reset was pending, cancel it
+        // If a soft audio-reset was pending, cancel it (user gone = no response coming)
         if (audioResetTimeout) {
             clearTimeout(audioResetTimeout);
             audioResetTimeout = null;
             resetAudioResetBtnToDefault();
+        }
+        // If a force-rejoin was pending, DON'T cancel it — the user is reloading and
+        // will rejoin shortly. handleUserJoined will detect the pending timeout and
+        // show the success confirmation. Update button to "rejoining" state.
+        if (forceRejoinTimeout) {
+            setRejoinBtnState('loading', 'User sedang rejoin\u2026');
         }
 
         // Also clear left-over active/disabled class from user camera button
@@ -712,10 +743,9 @@
 
     /**
      * User side: admin commanded an audio track restart.
-     * Calls restartAudioTrack() then reports result back to server.
      */
     async function handleForceAudioReset(data) {
-        console.log(`[Room] 🔊 Force audio reset received from admin`);
+        console.log(`[Room] 🔊 Force audio reset received from admin (${data?.by})`);
         if (!webrtc) {
             socket.emit('audio-reset-done', { roomId: ROOM_DATA.roomId, success: false });
             return;
@@ -723,14 +753,23 @@
         const success = await webrtc.restartAudioTrack();
         socket.emit('audio-reset-done', { roomId: ROOM_DATA.roomId, success });
         if (success) {
-            showToast('🔊 Audio reset oleh admin — mengembalikan ke mode komunikasi', 'info');
-        } else {
-            console.warn('[Room] ⚠️ Audio reset gagal di sisi user');
+            showToast('🔊 Admin me-reset audio — mencoba kembali ke mode komunikasi', 'info');
         }
     }
 
     /**
-     * Admin side: confirmation that user completed (or failed) the audio reset.
+     * User side: admin commanded a full page reload (reliable audio fix).
+     * After reload the user automatically rejoins the same room.
+     */
+    async function handleForceRejoin(data) {
+        console.log(`[Room] 🔄 Force rejoin commanded by admin: ${data?.by}`);
+        showToast(`Admin me-refresh halaman untuk memperbaiki audio…`, 'info');
+        await new Promise(r => setTimeout(r, 1500));
+        window.location.reload();
+    }
+
+    /**
+     * Admin side: confirmation from user that soft-reset completed.
      */
     function handleAudioResetConfirmed(data) {
         if (!ROOM_DATA.isAdmin) return;
@@ -1196,6 +1235,35 @@
     };
 
     /**
+     * Admin: emit force-rejoin command (page reload on user side).
+     * Confirmation comes implicitly via user-left then user-joined events.
+     */
+    window.adminForceRejoin = function() {
+        if (!ROOM_DATA.isAdmin || !remoteSocketId) {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+        if (forceRejoinTimeout) { clearTimeout(forceRejoinTimeout); forceRejoinTimeout = null; }
+
+        setRejoinBtnState('loading', 'Mengirim perintah…');
+
+        socket.emit('admin-force-rejoin', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId
+        });
+
+        // User's page will reload — we'll see user-left then user-joined.
+        // Reset button after 15s if nothing happens.
+        forceRejoinTimeout = setTimeout(() => {
+            forceRejoinTimeout = null;
+            setRejoinBtnState('error', '✗ User tidak merespons');
+            setTimeout(() => setRejoinBtnState('idle'), 3000);
+        }, 15000);
+
+        console.log(`[Room] 🔄 Admin sent force-rejoin to: ${remoteSocketId}`);
+    };
+
+    /**
      * Update the audio reset button and status text.
      * @param {'loading'|'success'|'error'} state
      * @param {string} text
@@ -1257,11 +1325,36 @@
         btn.querySelector('.spin-icon')?.remove();
         const resetIcon = btn.querySelector('.reset-icon');
         if (resetIcon) resetIcon.style.display = '';
-        if (btnText) btnText.textContent = 'Reset Audio User';
-        // Only clear status text if it's not in a permanent "last success" state
-        if (statusEl && statusEl.classList.contains('error')) {
-            statusEl.textContent = 'Siap untuk reset';
+        if (btnText) btnText.textContent = 'Restart Audio';
+        // Clear status text only if it was an error or loading (preserve last-success timestamp)
+        if (statusEl && !statusEl.classList.contains('success')) {
+            statusEl.textContent = 'Siap';
             statusEl.className = 'audio-reset-status';
+        }
+    }
+
+    /**
+     * Set state of the Force Rejoin button.
+     * @param {'idle'|'loading'|'error'} state
+     * @param {string} [text]
+     */
+    function setRejoinBtnState(state, text) {
+        const btn     = document.getElementById('audioRejoinBtn');
+        const btnText = document.getElementById('audioRejoinBtnText');
+        if (!btn || !btnText) return;
+        btn.classList.remove('loading', 'error');
+        btn.querySelector('.spin-icon')?.remove();
+        if (state === 'loading') {
+            btn.disabled = true;
+            btn.classList.add('loading');
+            btnText.textContent = text || 'Menunggu…';
+        } else if (state === 'error') {
+            btn.disabled = false;
+            btn.classList.add('error');
+            btnText.textContent = text || 'Gagal';
+        } else {
+            btn.disabled = false;
+            btnText.textContent = 'Force Rejoin User';
         }
     }
 
@@ -1663,7 +1756,8 @@
         document.getElementById('focusBtn')?.classList.remove('active');
         document.getElementById('audioPanel')?.classList.remove('visible');
         document.getElementById('audioBtn')?.classList.remove('active');
-        if (audioResetTimeout) { clearTimeout(audioResetTimeout); audioResetTimeout = null; }
+        if (audioResetTimeout)  { clearTimeout(audioResetTimeout);  audioResetTimeout  = null; }
+        if (forceRejoinTimeout) { clearTimeout(forceRejoinTimeout); forceRejoinTimeout = null; }
         adminFocusCapabilities = null;
         
         if (webrtc) {

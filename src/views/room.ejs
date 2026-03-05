@@ -282,19 +282,39 @@
                 <button class="btn-close" onclick="toggleAudioPanel()">&times;</button>
             </div>
             <div class="audio-panel-body">
-                <div class="audio-reset-desc">
-                    Gunakan jika audio user keluar dari <strong>speaker biasa</strong> (bukan earpiece telepon) setelah reconnect. Reset memaksa Chrome Mobile kembali ke mode komunikasi.
-                </div>
                 <!-- Shown when user is connected -->
                 <div class="audio-reset-user-section" id="audioResetUserSection" style="display:none">
-                    <div class="audio-reset-status" id="audioResetStatus">Siap untuk reset</div>
-                    <button class="audio-reset-btn" id="audioResetBtn" onclick="adminResetAudio()">
-                        <svg class="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="1 4 1 10 7 10"/>
-                            <path d="M3.51 15a9 9 0 1 0 .49-3.64"/>
-                        </svg>
-                        <span id="audioResetBtnText">Reset Audio User</span>
-                    </button>
+                    <div class="audio-reset-status" id="audioResetStatus">Siap</div>
+
+                    <!-- Opsi 1: Soft restart -->
+                    <div class="audio-option-group">
+                        <span class="audio-option-label">Opsi 1 — Soft Restart</span>
+                        <p class="audio-option-desc">Coba terlebih dahulu. Memaksa Chrome kembali ke mode komunikasi tanpa memutus sesi.</p>
+                        <button class="audio-reset-btn" id="audioResetBtn" onclick="adminResetAudio()">
+                            <svg class="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="1 4 1 10 7 10"/>
+                                <path d="M3.51 15a9 9 0 1 0 .49-3.64"/>
+                            </svg>
+                            <span id="audioResetBtnText">Restart Audio</span>
+                        </button>
+                    </div>
+
+                    <div class="audio-panel-divider"></div>
+
+                    <!-- Opsi 2: Force rejoin -->
+                    <div class="audio-option-group">
+                        <span class="audio-option-label">Opsi 2 — Force Rejoin</span>
+                        <p class="audio-option-desc">Jika Opsi 1 gagal. Reload halaman user secara paksa — user akan reconnect ulang dan audio pasti kembali normal.</p>
+                        <button class="audio-rejoin-btn" id="audioRejoinBtn" onclick="adminForceRejoin()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0">
+                                <path d="M21 2v6h-6"/>
+                                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                                <path d="M3 22v-6h6"/>
+                                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                            </svg>
+                            <span id="audioRejoinBtnText">Force Rejoin User</span>
+                        </button>
+                    </div>
                 </div>
                 <!-- Shown when no user connected -->
                 <div class="audio-no-user" id="audioResetNoUser">

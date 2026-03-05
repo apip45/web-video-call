@@ -721,7 +721,7 @@ const setupSocketHandlers = (io) => {
                     console.warn(`[Socket] ⚠️ Non-admin tried admin-reset-audio: ${socket.username}`);
                     return;
                 }
-                if (!await guardAdminControl(socket, null)) return;
+                if (!await guardAdminControl(socket, 'audio-reset-blocked')) return;
 
                 const { roomId, targetSocketId } = data || {};
                 if (!roomId || !targetSocketId) return;
@@ -733,6 +733,10 @@ const setupSocketHandlers = (io) => {
                     p => p.socketId === targetSocketId && p.role === 'user'
                 );
                 if (!target) {
+                    socket.emit('audio-reset-blocked', {
+                        success: false,
+                        message: 'User tidak ditemukan di room ini'
+                    });
                     console.warn(`[Socket] ⚠️ admin-reset-audio: target user not found in room ${roomId}`);
                     return;
                 }
@@ -743,6 +747,7 @@ const setupSocketHandlers = (io) => {
                 console.log(`[Socket] 🔊 Admin ${socket.username} triggered audio reset for ${target.username} (${targetSocketId})`);
             } catch (err) {
                 console.error(`[Socket] ❌ admin-reset-audio error: ${err.message}`);
+                socket.emit('audio-reset-blocked', { success: false, message: 'Server error' });
             }
         });
 
@@ -770,6 +775,44 @@ const setupSocketHandlers = (io) => {
                 console.log(`[Socket] 🔊 Audio reset by ${socket.username}: ${success ? '✅ OK' : '❌ FAILED'}`);
             } catch (err) {
                 console.error(`[Socket] ❌ audio-reset-done error: ${err.message}`);
+            }
+        });
+
+        /**
+         * Admin → Server: force the user to reload their page (nuclear option for audio fix).
+         * User's page does location.reload() → fresh getUserMedia → earpiece restored.
+         */
+        socket.on('admin-force-rejoin', async (data) => {
+            try {
+                if (socket.userRole !== 'admin') {
+                    console.warn(`[Socket] ⚠️ Non-admin tried admin-force-rejoin: ${socket.username}`);
+                    return;
+                }
+                if (!await guardAdminControl(socket, 'force-rejoin-blocked')) return;
+
+                const { roomId, targetSocketId } = data || {};
+                if (!roomId || !targetSocketId) return;
+
+                const room = await Room.findOne({ roomId });
+                if (!room) return;
+                const target = room.participants.find(
+                    p => p.socketId === targetSocketId && p.role === 'user'
+                );
+                if (!target) {
+                    socket.emit('force-rejoin-blocked', {
+                        success: false,
+                        message: 'User tidak ditemukan di room ini'
+                    });
+                    return;
+                }
+
+                io.to(targetSocketId).emit('force-rejoin', {
+                    by: socket.username
+                });
+                console.log(`[Socket] 🔄 Admin ${socket.username} force-rejoin for ${target.username} (${targetSocketId})`);
+            } catch (err) {
+                console.error(`[Socket] ❌ admin-force-rejoin error: ${err.message}`);
+                socket.emit('force-rejoin-blocked', { success: false, message: 'Server error' });
             }
         });
 

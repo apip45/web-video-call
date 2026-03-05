@@ -77,13 +77,13 @@ const sessionMiddleware = session({
     saveUninitialized: false,
     store: MongoStore.create({
         mongoUrl: process.env.MONGODB_URI,
-        ttl: 24 * 60 * 60, // 1 day
+        ttl: 2 * 60 * 60, // 2 hours
         autoRemove: 'native'
     }),
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 1 day
+        maxAge: 2 * 60 * 60 * 1000 // 2 hours
     }
 });
 
