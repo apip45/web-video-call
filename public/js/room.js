@@ -26,6 +26,11 @@
     let statsInterval = null;
     let audioResetTimeout = null;  // Timeout for admin audio soft-reset confirmation
     let forceRejoinTimeout = null; // Timeout for admin force-rejoin pending state
+    // Flag: getUserMedia has completed — safe to emit join-room.
+    // Prevents race condition where offer arrives before local tracks are added
+    // to the peer connection (which causes Chrome Mobile to skip MODE_IN_COMMUNICATION
+    // and route audio to the regular speaker instead of earpiece).
+    let webrtcReady = false;
     // Bandwidth delta tracking (for realtime kbps calculation)
     let prevBytesSent = 0;
     let prevBytesReceived = 0;
@@ -78,11 +83,23 @@
             // Show connecting status
             showConnectionStatus('Menghubungkan ke server...');
 
-            // Initialize Socket.IO
+            // Initialize Socket.IO first (start connecting in background)
             initSocket();
 
-            // Initialize WebRTC
+            // Initialize WebRTC — getUserMedia happens here.
+            // IMPORTANT: join-room is NOT emitted until this resolves (see initSocket).
+            // This ensures local audio track is always present when peer connection is
+            // created, so Chrome Mobile activates MODE_IN_COMMUNICATION (earpiece routing).
             await initWebRTC();
+
+            // Mark WebRTC as ready — now safe to join the room
+            webrtcReady = true;
+            // If socket already connected while getUserMedia was running, emit now
+            if (socket.connected) {
+                console.log('[Room] 🚪 WebRTC ready + socket already connected — emitting join-room');
+                socket.emit('join-room', { roomId: ROOM_DATA.roomId });
+            }
+            // Otherwise the socket 'connect' handler will emit once connected
 
             // Setup UI event listeners
             setupEventListeners();
@@ -119,9 +136,16 @@
         socket.on('connect', () => {
             console.log(`[Room] ✅ Socket connected: ${socket.id}`);
             mySocketId = socket.id;
-            
-            // Join room
-            socket.emit('join-room', { roomId: ROOM_DATA.roomId });
+
+            // Only emit join-room after getUserMedia has completed (webrtcReady).
+            // If socket connects before getUserMedia finishes, init() will emit
+            // join-room once initWebRTC() resolves (see init() above).
+            if (webrtcReady) {
+                console.log('[Room] 🚪 Socket connected + WebRTC already ready — emitting join-room');
+                socket.emit('join-room', { roomId: ROOM_DATA.roomId });
+            } else {
+                console.log('[Room] ⏳ Socket connected — waiting for WebRTC ready before join-room');
+            }
         });
 
         socket.on('disconnect', (reason) => {
