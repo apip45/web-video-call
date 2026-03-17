@@ -1659,3 +1659,25 @@
     }
 }
 
+/* =============================================================================
+   HIDE BUTTONS MODE (Admin Only)
+   ============================================================================= */
+.controls-bar.buttons-hidden .controls-left,
+.controls-bar.buttons-hidden .controls-center {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: visibility 0.3s ease, opacity 0.3s ease;
+}
+
+/* Keep controls-right visible and maintain proper layout */
+.controls-bar.buttons-hidden {
+    justify-content: flex-end; /* Push right section to the right */
+}
+
+/* Hide button active state indicator */
+#hideButtonsBtn.active {
+    background: rgba(239, 68, 68, 0.8);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+}
+

@@ -1814,6 +1814,42 @@
         console.log(`[Room] 👁️ PIP: ${isPipHidden ? 'HIDDEN' : 'VISIBLE'}`);
     };
 
+    // Hide/Show Buttons (Admin Only) - Hide all buttons except hide button and admin buttons
+    window.toggleHideButtons = function() {
+        console.log('[Room] toggleHideButtons called');
+        
+        const hideButtonsBtn = document.getElementById('hideButtonsBtn');
+        const controlsBar = document.getElementById('controlsBar');
+        const controlsLeft = document.querySelector('.controls-left');
+        const controlsCenter = document.querySelector('.controls-center');
+        
+        console.log('[Room] hideButtonsBtn:', hideButtonsBtn);
+        console.log('[Room] controlsBar:', controlsBar);
+        console.log('[Room] controlsLeft:', controlsLeft);
+        console.log('[Room] controlsCenter:', controlsCenter);
+        
+        if (!hideButtonsBtn || !controlsBar || !controlsLeft || !controlsCenter) {
+            console.error('[Room] ❌ Missing elements for hide buttons feature');
+            return;
+        }
+        
+        const isHidden = hideButtonsBtn.classList.contains('active');
+        
+        if (!isHidden) {
+            // Hide buttons (activate hide mode)
+            controlsBar.classList.add('buttons-hidden');
+            hideButtonsBtn.classList.add('active');
+            console.log('[Room] 🙈 Buttons hidden - only admin controls visible');
+            console.log('[Room] Adding buttons-hidden class to:', controlsBar);
+        } else {
+            // Show buttons (deactivate hide mode)
+            controlsBar.classList.remove('buttons-hidden');
+            hideButtonsBtn.classList.remove('active');
+            console.log('[Room] 👁️ Buttons visible - all controls shown');
+            console.log('[Room] Removing buttons-hidden class from:', controlsBar);
+        }
+    };
+
     // Toggle Stats Panel (Admin)
     window.toggleStatsPanel = function() {
         if (!elements.statsPanel) return;
