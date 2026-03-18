@@ -78,7 +78,7 @@ class WebRTCHandler {
         
         // Video settings from server (global settings)
         this.videoSettings = options.videoSettings || {
-            maxBitrate: 1500,
+            maxBitrate: 2000,  // ✅ increased from 1500 to better support 30fps on 720p
             resolution: '720p',
             maxFramerate: 30,
             width: 1280,
@@ -111,7 +111,8 @@ class WebRTCHandler {
                     width: { ideal: this.videoSettings.width, max: 1920 },
                     height: { ideal: this.videoSettings.height, max: 1080 },
                     facingMode: this.currentCameraFacing,
-                    frameRate: { ideal: this.videoSettings.maxFramerate, max: 60 }
+                    // ✅ IMPROVED: frameRate now has min + ideal + max for better constraint enforcement
+                    frameRate: { min: Math.max(10, this.videoSettings.maxFramerate - 5), ideal: this.videoSettings.maxFramerate, max: 60 }
                 },
                 audio: {
                     echoCancellation: true,
@@ -182,7 +183,8 @@ class WebRTCHandler {
                     facingMode: this.currentCameraFacing,
                     width: { ideal: this.videoSettings.width },
                     height: { ideal: this.videoSettings.height },
-                    frameRate: { ideal: this.videoSettings.maxFramerate }
+                    // ✅ IMPROVED: frameRate with min + ideal for better constraint enforcement
+                    frameRate: { min: Math.max(10, this.videoSettings.maxFramerate - 5), ideal: this.videoSettings.maxFramerate }
                 }
             });
 
@@ -315,15 +317,40 @@ class WebRTCHandler {
             }
 
             try {
-                const constraints = {
-                    width: { ideal: targetWidth, max: targetWidth },
-                    height: { ideal: targetHeight, max: targetHeight },
-                    frameRate: { ideal: framerate, max: 60 },
-                    facingMode: this.currentCameraFacing
-                };
+                // ✅ NEW: Framerate fallback chain for graceful degradation
+                let framerateFallbacks = [framerate];
+                if (framerate >= 30) framerateFallbacks = [30, 24, 20, 15, 10];
+                else if (framerate >= 24) framerateFallbacks = [24, 20, 15, 10];
+                else if (framerate >= 20) framerateFallbacks = [20, 15, 10];
+                else if (framerate >= 15) framerateFallbacks = [15, 10];
+                
+                let lastFramerateError = null;
+                let successFramerate = null;
+                
+                for (const tryFramerate of framerateFallbacks) {
+                    try {
+                        const constraints = {
+                            width: { ideal: targetWidth, max: targetWidth },
+                            height: { ideal: targetHeight, max: targetHeight },
+                            // ✅ IMPROVED: frameRate with min + ideal + max constraint
+                            frameRate: { min: Math.max(10, tryFramerate - 5), ideal: tryFramerate, max: 60 },
+                            facingMode: this.currentCameraFacing
+                        };
 
-                console.log(`[WebRTC] 🎯 Attempting to apply constraints:`, constraints);
-                await currentVideoTrack.applyConstraints(constraints);
+                        console.log(`[WebRTC] 🎯 Attempting to apply constraints (${tryFramerate}fps):`, constraints);
+                        await currentVideoTrack.applyConstraints(constraints);
+                        successFramerate = tryFramerate;
+                        break; // Success, exit loop
+                    } catch (fpsError) {
+                        lastFramerateError = fpsError;
+                        console.warn(`[WebRTC] ⚠️ Failed with ${tryFramerate}fps: ${fpsError.message}`);
+                        // Try next framerate
+                    }
+                }
+                
+                if (!successFramerate) {
+                    throw new Error(`Failed to apply any framerate. Last error: ${lastFramerateError.message}`);
+                }
 
                 // Get actual settings that were applied
                 const actualSettings = currentVideoTrack.getSettings();
@@ -331,7 +358,8 @@ class WebRTCHandler {
                 console.log(`[WebRTC] 📊 Actual settings:`, {
                     width: actualSettings.width,
                     height: actualSettings.height,
-                    frameRate: actualSettings.frameRate
+                    frameRate: actualSettings.frameRate || successFramerate,
+                    note: `Encoder framerate: ${successFramerate}fps`
                 });
 
                 // If we had to fallback, notify
@@ -341,14 +369,21 @@ class WebRTCHandler {
                     this.videoSettings.width = targetWidth;
                     this.videoSettings.height = targetHeight;
                 }
+                
+                // If we had to fallback framerate, notify
+                if (successFramerate !== framerate) {
+                    console.log(`[WebRTC] ⚠️ Framerate fell back from ${framerate}fps to ${successFramerate}fps`);
+                    this.videoSettings.maxFramerate = successFramerate;
+                }
 
                 return {
                     resolution: this.videoSettings.resolution,
                     width: actualSettings.width || targetWidth,
                     height: actualSettings.height || targetHeight,
-                    frameRate: actualSettings.frameRate || framerate,
-                    fellBack: currentResolutionIndex > resolutionFallbacks.indexOf(resolution),
-                    originalResolution: resolution
+                    frameRate: actualSettings.frameRate || successFramerate,
+                    fellBack: currentResolutionIndex > resolutionFallbacks.indexOf(resolution) || successFramerate !== framerate,
+                    originalResolution: resolution,
+                    appliedFramerate: successFramerate
                 };
 
             } catch (error) {
@@ -894,10 +929,16 @@ class WebRTCHandler {
             // Set max bitrate in bits per second (settings are in kbps)
             params.encodings[0].maxBitrate = this.videoSettings.maxBitrate * 1000;
             
+            // ✅ NEW: Also set framerate constraint on encoder (was missing before)
+            // This ensures encoder respects the framerate setting, not just the camera
+            params.encodings[0].maxFramerate = this.videoSettings.maxFramerate;
+            
             await sender.setParameters(params);
-            console.log(`[WebRTC] ⚙️ Applied bitrate constraint: ${this.videoSettings.maxBitrate} kbps`);
+            console.log(`[WebRTC] ⚙️ Applied encoder constraints:`);
+            console.log(`  - Bitrate: ${this.videoSettings.maxBitrate} kbps`);
+            console.log(`  - Framerate: ${this.videoSettings.maxFramerate} fps`);
         } catch (error) {
-            console.warn('[WebRTC] ⚠️ Could not apply bitrate constraint:', error.message);
+            console.warn('[WebRTC] ⚠️ Could not apply encoder constraints:', error.message);
         }
     }
 

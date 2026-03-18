@@ -21,9 +21,9 @@ const VIDEO_QUALITY_PRESETS = {
         label: '480p (SD)',
         width: 854,
         height: 480,
-        maxBitrate: 800,  // kbps
-        minBitrate: 500,
-        idealBitrate: 650,
+        maxBitrate: 1200,  // kbps (increased for better 30fps quality)
+        minBitrate: 700,
+        idealBitrate: 900,  // increased from 650 for better 30fps support
         maxFramerate: 30,
         idealFramerate: 30
     },
@@ -31,9 +31,9 @@ const VIDEO_QUALITY_PRESETS = {
         label: '720p (HD)',
         width: 1280,
         height: 720,
-        maxBitrate: 1500,  // kbps
-        minBitrate: 1000,
-        idealBitrate: 1200,
+        maxBitrate: 2200,  // kbps (increased for better 30fps quality)
+        minBitrate: 1500,
+        idealBitrate: 1800,  // increased from 1200 for better 30fps support
         maxFramerate: 30,
         idealFramerate: 30
     },
@@ -41,9 +41,9 @@ const VIDEO_QUALITY_PRESETS = {
         label: '1080p (Full HD)',
         width: 1920,
         height: 1080,
-        maxBitrate: 3000,  // kbps
-        minBitrate: 2000,
-        idealBitrate: 2500,
+        maxBitrate: 4500,  // kbps (increased for better 30fps quality)
+        minBitrate: 3000,
+        idealBitrate: 3500,  // increased from 2500 for better 30fps support
         maxFramerate: 30,
         idealFramerate: 30
     }
