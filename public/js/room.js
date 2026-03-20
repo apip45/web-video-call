@@ -1505,6 +1505,67 @@
         
         // Setup auto-hide controls
         setupAutoHideControls();
+        
+        // ✅ NEW: Setup keyboard shortcuts
+        setupKeyboardShortcuts();
+    }
+    
+    /**
+     * Setup keyboard shortcuts
+     * F - Fullscreen toggle
+     * S - Switch camera user (admin only)
+     * T - Toggle camera on/off (admin only)
+     */
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (event) => {
+            // Only handle if not typing in input field
+            const isInput = event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA';
+            if (isInput) return;
+            
+            const key = event.key.toUpperCase();
+            
+            switch(key) {
+                case 'F':
+                    // Fullscreen toggle
+                    event.preventDefault();
+                    console.log('[Room] ⌨️ Keyboard shortcut: F - Fullscreen');
+                    window.toggleFullscreen();
+                    break;
+                    
+                case 'S':
+                    // Switch camera user (admin only)
+                    if (!ROOM_DATA.isAdmin) {
+                        console.log('[Room] ⌨️ Shortcut S blocked - not admin');
+                        break;
+                    }
+                    if (!remoteSocketId) {
+                        showToast('Tidak ada user yang terhubung', 'warning');
+                        break;
+                    }
+                    event.preventDefault();
+                    console.log('[Room] ⌨️ Keyboard shortcut: S - Switch camera');
+                    window.switchUserCamera();
+                    break;
+                    
+                case 'T':
+                    // Toggle camera on/off (admin only)
+                    if (!ROOM_DATA.isAdmin) {
+                        console.log('[Room] ⌨️ Shortcut T blocked - not admin');
+                        break;
+                    }
+                    if (!remoteSocketId) {
+                        showToast('Tidak ada user yang terhubung', 'warning');
+                        break;
+                    }
+                    event.preventDefault();
+                    console.log('[Room] ⌨️ Keyboard shortcut: T - Toggle camera');
+                    window.toggleUserCamera();
+                    break;
+            }
+        });
+        
+        console.log('[Room] ⌨️ Keyboard shortcuts initialized (F=Fullscreen, S=Switch Camera*, T=Toggle Camera*)');
+        console.log('[Room] ⌨️ *=Admin only');
     }
     
     // ==========================================================================

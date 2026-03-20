@@ -303,7 +303,7 @@
     justify-content: space-between;
     padding: var(--spacing-md);
     padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7), transparent);
+    background: transparent; /* ✅ Removed dark gradient to prevent covering video */
     z-index: 20;
     
     /* Auto-hide animation */
