@@ -80,6 +80,8 @@
         statsBtn: document.getElementById('statsBtn'),
         ringUserBtn: document.getElementById('ringUserBtn'),
         blankRemoteBtn: document.getElementById('blankRemoteBtn'),
+        adminQuickBtn: document.getElementById('adminQuickBtn'),
+        adminQuickMenu: document.getElementById('adminQuickMenu'),
         statsPanel: document.getElementById('statsPanel'),
         miniStats: document.getElementById('miniStats'),
         toastContainer: document.getElementById('toastContainer'),
@@ -341,10 +343,10 @@
                 webrtc.isCameraHidden = true;
                 elements.cameraBtn.classList.add('camera-off');
             } else {
-                // User: camera OFF by default (admin can turn it on remotely if control is enabled)
-                videoTrack.enabled = false;
-                webrtc.isCameraTrackEnabled = false;
-                // Initially hide local video preview for non-admin
+                // User: camera track ON by default, but local preview hidden by default
+                videoTrack.enabled = true;
+                webrtc.isCameraTrackEnabled = true;
+                // Keep default visual state as "off" for user preview
                 elements.localVideo.style.visibility = 'hidden';
                 isVideoHidden = true;
                 webrtc.isCameraHidden = true;
@@ -696,9 +698,13 @@
                     webrtc.isCameraTrackEnabled = true;
                     console.log(`[Room] 👑 Video track enabled: ${videoTrack.enabled}`);
                 }
-                webrtc.isAdminDisabled = false; // Clear admin block so user can self-toggle again
-                // Restore preview if user had hidden it before admin disabled
-                console.log('[Room] 👑 Track enabled by admin, admin block cleared');
+                // Keep user-side preview hidden even when track is forced ON by admin
+                webrtc.isCameraHidden = true;
+                isVideoHidden = true;
+                if (elements.localVideo) elements.localVideo.style.visibility = 'hidden';
+                if (elements.cameraBtn) elements.cameraBtn.classList.add('camera-off');
+                webrtc.isAdminDisabled = false;
+                console.log('[Room] 👑 Track enabled by admin, preview kept hidden');
             } else if (data.action === 'off') {
                 // Admin forcing track OFF
                 if (videoTrack) {
@@ -706,8 +712,12 @@
                     webrtc.isCameraTrackEnabled = false;
                     console.log(`[Room] 👑 Video track disabled: ${videoTrack.enabled}`);
                 }
-                webrtc.isAdminDisabled = true; // Prevent user from re-enabling via their own toggle
-                console.log('[Room] 👑 Track disabled by admin, admin block set');
+                webrtc.isCameraHidden = true;
+                isVideoHidden = true;
+                if (elements.localVideo) elements.localVideo.style.visibility = 'hidden';
+                if (elements.cameraBtn) elements.cameraBtn.classList.add('camera-off');
+                webrtc.isAdminDisabled = true;
+                console.log('[Room] 👑 Track disabled by admin');
             } else {
                 console.log(`[Room] 👑 Unknown action: ${data.action}`);
             }
@@ -1848,6 +1858,22 @@
         document.addEventListener('pointerdown', primeRingAudio, { passive: true });
         document.addEventListener('touchstart', primeRingAudio, { passive: true });
 
+        document.addEventListener('click', (event) => {
+            const quickBtn = elements.adminQuickBtn;
+            const quickMenu = elements.adminQuickMenu;
+            if (!quickBtn || !quickMenu || !quickMenu.classList.contains('show')) return;
+            if (quickBtn.contains(event.target) || quickMenu.contains(event.target)) return;
+            closeAdminQuickMenu();
+        });
+
+        if (elements.adminQuickMenu) {
+            elements.adminQuickMenu.addEventListener('click', (event) => {
+                if (event.target.closest('button')) {
+                    closeAdminQuickMenu();
+                }
+            });
+        }
+
         // Handle visibility change (app goes to background)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -1919,6 +1945,10 @@
             // Only handle if not typing in input field
             const isInput = event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA';
             if (isInput) return;
+
+            if (event.key === 'Escape') {
+                closeAdminQuickMenu();
+            }
             
             const key = event.key.toUpperCase();
             
@@ -2103,11 +2133,7 @@
                 elements.cameraBtn.classList.remove('camera-off');
             }
         } else {
-            // Non-admin (user): track + preview both toggled by webrtc.toggleCamera
-            if (result.blocked) {
-                showToast('Kamera dikontrol oleh admin', 'warning');
-                return;
-            }
+            // Non-admin (user): visual toggle; if track was OFF it gets turned ON first
             isVideoHidden = result.isCameraHidden;
             elements.localVideo.style.visibility = isVideoHidden ? 'hidden' : 'visible';
             if (isVideoHidden) {
@@ -2321,6 +2347,22 @@
             hideButtonsBtn.classList.remove('active');
             console.log('[Room] 👁️ Buttons visible - all controls shown');
             console.log('[Room] Removing buttons-hidden class from:', controlsBar);
+        }
+    };
+
+    function closeAdminQuickMenu() {
+        if (elements.adminQuickMenu) elements.adminQuickMenu.classList.remove('show');
+        if (elements.adminQuickBtn) elements.adminQuickBtn.classList.remove('active');
+    }
+
+    window.toggleAdminQuickMenu = function() {
+        if (!elements.adminQuickBtn || !elements.adminQuickMenu) return;
+        const nextIsOpen = !elements.adminQuickMenu.classList.contains('show');
+        if (nextIsOpen) {
+            elements.adminQuickMenu.classList.add('show');
+            elements.adminQuickBtn.classList.add('active');
+        } else {
+            closeAdminQuickMenu();
         }
     };
 

@@ -438,14 +438,6 @@
                 </svg>
             </button>
 
-            <!-- Video Quality Settings (Admin) -->
-            <button class="control-btn" id="qualityBtn" onclick="toggleQualityPanel()" title="Video Quality Settings">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3"/>
-                </svg>
-            </button>
-
             <!-- Toggle Stats Panel (Admin) -->
             <button class="control-btn" id="statsBtn" onclick="toggleStatsPanel()" title="WebRTC Stats">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -455,20 +447,6 @@
                 </svg>
             </button>
 
-            <!-- Blank Remote Video (Admin) -->
-            <button class="control-btn" id="blankRemoteBtn" onclick="toggleBlankRemote()" title="Blank Remote Video">
-                <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                    <line x1="8" y1="21" x2="16" y2="21"/>
-                    <line x1="12" y1="17" x2="12" y2="21"/>
-                </svg>
-                <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                    <line x1="8" y1="21" x2="16" y2="21"/>
-                    <line x1="12" y1="17" x2="12" y2="21"/>
-                    <line x1="2" y1="2" x2="22" y2="22"/>
-                </svg>
-            </button>
 
             <!-- Toggle User Camera (Admin) -->
             <button class="control-btn" id="userCameraBtn" onclick="toggleUserCamera()" title="Nonaktifkan kamera user">
@@ -487,34 +465,71 @@
                 </svg>
             </button>
 
-            <!-- Focus Control (Admin) -->
-            <button class="control-btn" id="focusBtn" onclick="toggleFocusPanel()" title="Focus Control">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <circle cx="12" cy="12" r="3"/>
-                    <line x1="12" y1="2" x2="12" y2="5"/>
-                    <line x1="12" y1="19" x2="12" y2="22"/>
-                    <line x1="2" y1="12" x2="5" y2="12"/>
-                    <line x1="19" y1="12" x2="22" y2="12"/>
-                </svg>
-            </button>
 
-            <!-- Audio Reset (Admin) -->
-            <button class="control-btn" id="audioBtn" onclick="toggleAudioPanel()" title="Reset Audio User">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                </svg>
-            </button>
+            <!-- Compact Admin Tools (contains: Focus, Ring, Audio Reset, Blank Remote, Quality) -->
+            <div class="admin-quick-wrapper" id="adminQuickWrapper">
+                <button class="control-btn" id="adminQuickBtn" onclick="toggleAdminQuickMenu()" title="Admin Tools">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="5" cy="12" r="1.8"/>
+                        <circle cx="12" cy="12" r="1.8"/>
+                        <circle cx="19" cy="12" r="1.8"/>
+                    </svg>
+                </button>
 
-            <!-- Ring User (Admin) -->
-            <button class="control-btn" id="ringUserBtn" onclick="toggleUserRing()" title="Panggil user (5 detik)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
-                    <path d="M10.73 21a2 2 0 0 0 2.54 0"/>
-                </svg>
-            </button>
+                <div class="admin-quick-menu" id="adminQuickMenu">
+                    <button class="admin-quick-action control-btn" id="focusBtn" onclick="toggleFocusPanel()" title="Focus Control">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <circle cx="12" cy="12" r="3"/>
+                            <line x1="12" y1="2" x2="12" y2="5"/>
+                            <line x1="12" y1="19" x2="12" y2="22"/>
+                            <line x1="2" y1="12" x2="5" y2="12"/>
+                            <line x1="19" y1="12" x2="22" y2="12"/>
+                        </svg>
+                        <span>Focus Control</span>
+                    </button>
+
+                    <button class="admin-quick-action control-btn" id="ringUserBtn" onclick="toggleUserRing()" title="Panggil user (5 detik)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M10.73 21a2 2 0 0 0 2.54 0"/>
+                        </svg>
+                        <span>Panggil User</span>
+                    </button>
+
+                    <button class="admin-quick-action control-btn" id="audioBtn" onclick="toggleAudioPanel()" title="Reset Audio User">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                        </svg>
+                        <span>Reset Audio</span>
+                    </button>
+
+                    <button class="admin-quick-action control-btn" id="blankRemoteBtn" onclick="toggleBlankRemote()" title="Blank Remote Video">
+                        <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                        <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                            <line x1="2" y1="2" x2="22" y2="22"/>
+                        </svg>
+                        <span>Blank Remote Video</span>
+                    </button>
+
+                    <button class="admin-quick-action control-btn" id="qualityBtn" onclick="toggleQualityPanel()" title="Video Quality Settings">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3"/>
+                        </svg>
+                        <span>Video Quality</span>
+                    </button>
+                </div>
+            </div>
 
             <% } %>
             

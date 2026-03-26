@@ -565,8 +565,7 @@ class WebRTCHandler {
     /**
      * Toggle camera on/off
      * For admin: toggle actual track enabled state
-     * For non-admin (user): only toggle visual (track always stays enabled)
-     * User cannot toggle if admin has disabled their camera
+     * For non-admin (user): if track is OFF then turn track ON; if track is ON then toggle visual only
      */
     async toggleCamera() {
         if (!this.localStream) return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled };
@@ -595,30 +594,33 @@ class WebRTCHandler {
                     }
                 }
             } else {
-                // Non-admin (user): respect admin's disable command
-                if (this.isAdminDisabled) {
-                    console.log('[WebRTC] 📹 User Camera: BLOCKED - Admin has disabled camera');
-                    return { isCameraHidden: this.isCameraHidden, isCameraTrackEnabled: this.isCameraTrackEnabled, blocked: true };
-                }
+                // Non-admin (user):
+                // - If track currently OFF, force it ON and show preview.
+                // - If track currently ON, only toggle preview visibility (visual off/on).
+                const isTrackEnabledNow = !!videoTrack.enabled;
 
-                // Toggle actual track + visual state (camera starts OFF by default)
-                this.isCameraTrackEnabled = !this.isCameraTrackEnabled;
-                videoTrack.enabled = this.isCameraTrackEnabled;
-                this.isCameraHidden = !this.isCameraTrackEnabled;
+                if (!isTrackEnabledNow) {
+                    videoTrack.enabled = true;
+                    this.isCameraTrackEnabled = true;
+                    this.isCameraHidden = false;
+                    this.isAdminDisabled = false;
+                    console.log('[WebRTC] 📹 User Camera: track was OFF -> forced ON, preview shown');
 
-                console.log(`[WebRTC] 📹 User Camera: track=${this.isCameraTrackEnabled ? 'ON' : 'OFF'}`);
-
-                // Refresh sender track when re-enabling so remote peer receives video
-                if (this.isCameraTrackEnabled && this.peerConnection) {
-                    const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
-                    if (sender) {
-                        try {
-                            await sender.replaceTrack(videoTrack);
-                            console.log('[WebRTC] 📹 User: Refreshed video track on sender');
-                        } catch (err) {
-                            console.warn('[WebRTC] ⚠️ Could not refresh track:', err.message);
+                    if (this.peerConnection) {
+                        const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                        if (sender) {
+                            try {
+                                await sender.replaceTrack(videoTrack);
+                                console.log('[WebRTC] 📹 User: Refreshed video track on sender');
+                            } catch (err) {
+                                console.warn('[WebRTC] ⚠️ Could not refresh track:', err.message);
+                            }
                         }
                     }
+                } else {
+                    this.isCameraTrackEnabled = true;
+                    this.isCameraHidden = !this.isCameraHidden;
+                    console.log(`[WebRTC] 📹 User Camera: visual ${this.isCameraHidden ? 'HIDDEN' : 'VISIBLE'} (track stays ON)`);
                 }
             }
             
