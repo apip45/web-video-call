@@ -35,6 +35,22 @@
     let prevBytesSent = 0;
     let prevBytesReceived = 0;
     let prevStatsTime = 0;
+
+    // Ring notice (admin -> user)
+    const RING_DEFAULT_DURATION_MS = 5000;
+    const RING_ACK_TIMEOUT_MS = 7000;
+    let adminRingRequestId = null;
+    let adminRingAckTimeout = null;
+    let adminRingState = 'idle'; // 'idle' | 'sending' | 'ringing'
+    let userRingRequestId = null;
+    let userRingAutoStopTimeout = null;
+    let userRingPatternInterval = null;
+    let userRingVibrateInterval = null;
+    let userRingActive = false;
+    let ringAudioContext = null;
+    let ringMasterGain = null;
+    let ringOscA = null;
+    let ringOscB = null;
     
     // Auto-hide controls
     let controlsHideTimeout = null;
@@ -62,6 +78,7 @@
         endCallBtn: document.getElementById('endCallBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
         statsBtn: document.getElementById('statsBtn'),
+        ringUserBtn: document.getElementById('ringUserBtn'),
         blankRemoteBtn: document.getElementById('blankRemoteBtn'),
         statsPanel: document.getElementById('statsPanel'),
         miniStats: document.getElementById('miniStats'),
@@ -236,6 +253,15 @@
 
         // Force rejoin: admin commanded page reload (user side)
         socket.on('force-rejoin', handleForceRejoin);
+
+        // Ring notice (admin -> user)
+        socket.on('ring-command', handleRingCommand);
+        socket.on('ring-stop', handleRingStop);
+        socket.on('ring-status', handleRingStatus);
+        socket.on('ring-started', handleRingStarted);
+        socket.on('ring-stopped', handleRingStopped);
+        socket.on('ring-failed', handleRingFailed);
+        socket.on('ring-blocked', handleRingBlocked);
 
         // Errors
         socket.on('error', (data) => {
@@ -513,6 +539,15 @@
         if (forceRejoinTimeout) {
             setRejoinBtnState('loading', 'User sedang rejoin\u2026');
         }
+
+        // Reset ring state (admin side)
+        clearAdminRingAckTimeout();
+        adminRingState = 'idle';
+        adminRingRequestId = null;
+        setRingBtnState('idle');
+
+        // Ensure ringing is stopped (user side)
+        stopUserRingAlert('peer_left', false);
 
         // Also clear left-over active/disabled class from user camera button
         const userCameraBtn = document.getElementById('userCameraBtn');
@@ -811,6 +846,357 @@
         }
         setTimeout(resetAudioResetBtnToDefault, 3000);
     }
+
+    // ==========================================================================
+    // RING NOTICE HANDLERS
+    // ==========================================================================
+
+    async function handleRingCommand(data) {
+        if (ROOM_DATA.isAdmin) return;
+        if (!data?.requestId) return;
+
+        const durationMs = Number.isFinite(Number(data.durationMs))
+            ? Math.max(1000, Math.min(15000, Number(data.durationMs)))
+            : RING_DEFAULT_DURATION_MS;
+
+        const started = await startUserRingAlert({
+            requestId: data.requestId,
+            durationMs,
+            by: data.by || 'Admin'
+        });
+
+        if (!started && socket) {
+            socket.emit('ring-failed', {
+                roomId: ROOM_DATA.roomId,
+                requestId: data.requestId,
+                reason: 'audio_and_vibration_unavailable'
+            });
+        }
+    }
+
+    function handleRingStop(data) {
+        if (ROOM_DATA.isAdmin) return;
+        const requestId = data?.requestId || null;
+
+        if (requestId && userRingRequestId && requestId !== userRingRequestId) return;
+
+        stopUserRingAlert(data?.reason || 'admin_stop', true);
+        showToast('🔕 Ring dihentikan', 'info');
+    }
+
+    function handleRingStatus(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        if (!data?.success) return;
+
+        if (data.status === 'stop-sent') {
+            clearAdminRingAckTimeout();
+            adminRingState = 'idle';
+            adminRingRequestId = null;
+            setRingBtnState('idle');
+            showToast('🔕 Perintah stop ring dikirim', 'info');
+        }
+    }
+
+    function handleRingStarted(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        if (!data?.requestId) return;
+        if (adminRingRequestId && data.requestId !== adminRingRequestId) return;
+
+        clearAdminRingAckTimeout();
+        adminRingState = 'ringing';
+        adminRingRequestId = data.requestId;
+        setRingBtnState('ringing');
+        showToast('🔔 User sedang berdering', 'success');
+    }
+
+    function handleRingStopped(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        if (adminRingRequestId && data?.requestId && data.requestId !== adminRingRequestId) return;
+
+        clearAdminRingAckTimeout();
+        adminRingState = 'idle';
+        adminRingRequestId = null;
+        setRingBtnState('idle');
+        showToast('🔕 Ring user berhenti', 'info');
+    }
+
+    function handleRingFailed(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        if (adminRingRequestId && data?.requestId && data.requestId !== adminRingRequestId) return;
+
+        clearAdminRingAckTimeout();
+        adminRingState = 'idle';
+        adminRingRequestId = null;
+        setRingBtnState('idle');
+        showToast(`❌ Ring gagal: ${data?.reason || 'unknown'}`, 'error');
+    }
+
+    function handleRingBlocked(data) {
+        if (!ROOM_DATA.isAdmin) return;
+        clearAdminRingAckTimeout();
+        adminRingState = 'idle';
+        adminRingRequestId = null;
+        setRingBtnState('idle');
+        showToast(`❌ ${data?.message || 'Perintah ring ditolak server'}`, 'error');
+    }
+
+    async function startUserRingAlert({ requestId, durationMs, by }) {
+        stopUserRingAlert('superseded', false);
+
+        userRingRequestId = requestId;
+        userRingActive = true;
+
+        let audioStarted = false;
+        let vibrationStarted = false;
+
+        try {
+            audioStarted = await startRingtonePattern();
+        } catch (error) {
+            console.warn('[Room] ⚠️ Failed to start ringtone:', error.message);
+        }
+
+        vibrationStarted = startVibrationPattern();
+
+        if (!audioStarted && !vibrationStarted) {
+            userRingActive = false;
+            userRingRequestId = null;
+            return false;
+        }
+
+        if (socket) {
+            socket.emit('ring-started', {
+                roomId: ROOM_DATA.roomId,
+                requestId
+            });
+        }
+
+        showToast(`🔔 ${by} memanggil...`, 'info');
+
+        userRingAutoStopTimeout = setTimeout(() => {
+            stopUserRingAlert('timeout', true);
+        }, durationMs);
+
+        return true;
+    }
+
+    function stopUserRingAlert(reason = 'stopped', notifyServer = true) {
+        if (!userRingActive && !userRingRequestId) return;
+
+        if (userRingAutoStopTimeout) {
+            clearTimeout(userRingAutoStopTimeout);
+            userRingAutoStopTimeout = null;
+        }
+
+        stopRingtonePattern();
+
+        stopVibrationPattern();
+
+        const requestId = userRingRequestId;
+        userRingActive = false;
+        userRingRequestId = null;
+
+        if (notifyServer && socket && requestId) {
+            socket.emit('ring-stopped', {
+                roomId: ROOM_DATA.roomId,
+                requestId,
+                reason
+            });
+        }
+    }
+
+    async function ensureRingAudioContext() {
+        if (!ringAudioContext) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return null;
+            ringAudioContext = new AudioCtx();
+            ringMasterGain = ringAudioContext.createGain();
+            ringMasterGain.gain.value = 0;
+            ringMasterGain.connect(ringAudioContext.destination);
+        }
+
+        if (ringAudioContext.state === 'suspended') {
+            try {
+                await ringAudioContext.resume();
+            } catch (error) {
+                console.warn('[Room] ⚠️ AudioContext resume blocked:', error.message);
+            }
+        }
+
+        return ringAudioContext;
+    }
+
+    async function startRingtonePattern() {
+        const ctx = await ensureRingAudioContext();
+        if (!ctx || !ringMasterGain || ctx.state !== 'running') {
+            return false;
+        }
+
+        stopRingtonePattern();
+
+        ringOscA = ctx.createOscillator();
+        ringOscB = ctx.createOscillator();
+        ringOscA.type = 'sine';
+        ringOscB.type = 'sine';
+        ringOscA.frequency.value = 660;
+        ringOscB.frequency.value = 880;
+        ringOscA.connect(ringMasterGain);
+        ringOscB.connect(ringMasterGain);
+        ringOscA.start();
+        ringOscB.start();
+
+        const setTone = (on) => {
+            const t = ctx.currentTime;
+            ringMasterGain.gain.cancelScheduledValues(t);
+            ringMasterGain.gain.setValueAtTime(ringMasterGain.gain.value, t);
+            ringMasterGain.gain.linearRampToValueAtTime(on ? 0.06 : 0, t + 0.03);
+        };
+
+        let toneOn = true;
+        setTone(true);
+        userRingPatternInterval = setInterval(() => {
+            toneOn = !toneOn;
+            setTone(toneOn);
+        }, 420);
+
+        return true;
+    }
+
+    function stopRingtonePattern() {
+        if (userRingPatternInterval) {
+            clearInterval(userRingPatternInterval);
+            userRingPatternInterval = null;
+        }
+
+        if (ringMasterGain && ringAudioContext) {
+            const t = ringAudioContext.currentTime;
+            ringMasterGain.gain.cancelScheduledValues(t);
+            ringMasterGain.gain.setValueAtTime(ringMasterGain.gain.value, t);
+            ringMasterGain.gain.linearRampToValueAtTime(0, t + 0.03);
+        }
+
+        if (ringOscA) {
+            try { ringOscA.stop(); } catch (_) {}
+            try { ringOscA.disconnect(); } catch (_) {}
+            ringOscA = null;
+        }
+        if (ringOscB) {
+            try { ringOscB.stop(); } catch (_) {}
+            try { ringOscB.disconnect(); } catch (_) {}
+            ringOscB = null;
+        }
+    }
+
+    function startVibrationPattern() {
+        if (!navigator.vibrate) return false;
+
+        stopVibrationPattern();
+
+        try {
+            // Short pulse pattern, repeated — can be cancelled immediately on stop.
+            const pattern = [220, 120, 220, 120];
+            const cycleMs = 680;
+            const didStart = navigator.vibrate(pattern);
+
+            userRingVibrateInterval = setInterval(() => {
+                try { navigator.vibrate(pattern); } catch (_) {}
+            }, cycleMs);
+
+            return didStart;
+        } catch (error) {
+            console.warn('[Room] ⚠️ Failed to start vibration pattern:', error.message);
+            return false;
+        }
+    }
+
+    function stopVibrationPattern() {
+        if (userRingVibrateInterval) {
+            clearInterval(userRingVibrateInterval);
+            userRingVibrateInterval = null;
+        }
+
+        if (navigator.vibrate) {
+            try { navigator.vibrate(0); } catch (_) {}
+        }
+    }
+
+    function clearAdminRingAckTimeout() {
+        if (adminRingAckTimeout) {
+            clearTimeout(adminRingAckTimeout);
+            adminRingAckTimeout = null;
+        }
+    }
+
+    function setRingBtnState(state) {
+        const btn = document.getElementById('ringUserBtn');
+        if (!btn) return;
+
+        btn.classList.remove('active');
+        btn.disabled = false;
+
+        if (state === 'sending') {
+            btn.disabled = true;
+            btn.classList.add('active');
+            btn.title = 'Mengirim ring...';
+            return;
+        }
+
+        if (state === 'ringing') {
+            btn.classList.add('active');
+            btn.title = 'Stop ring user';
+            return;
+        }
+
+        btn.title = 'Panggil user (5 detik)';
+    }
+
+    window.toggleUserRing = function() {
+        if (!ROOM_DATA.isAdmin) {
+            showToast('Hanya admin yang dapat menggunakan fitur ini', 'error');
+            return;
+        }
+
+        if (!remoteSocketId || remoteUserRole !== 'user') {
+            showToast('Belum ada user yang terhubung', 'warning');
+            return;
+        }
+
+        if (adminRingState === 'sending' || adminRingState === 'ringing') {
+            socket.emit('admin-stop-ring', {
+                roomId: ROOM_DATA.roomId,
+                targetSocketId: remoteSocketId,
+                requestId: adminRingRequestId
+            });
+            clearAdminRingAckTimeout();
+            adminRingState = 'idle';
+            adminRingRequestId = null;
+            setRingBtnState('idle');
+            showToast('🔕 Menghentikan ring user...', 'info');
+            return;
+        }
+
+        adminRingRequestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        adminRingState = 'sending';
+        setRingBtnState('sending');
+
+        socket.emit('admin-ring-user', {
+            roomId: ROOM_DATA.roomId,
+            targetSocketId: remoteSocketId,
+            requestId: adminRingRequestId,
+            durationMs: RING_DEFAULT_DURATION_MS
+        });
+
+        clearAdminRingAckTimeout();
+        adminRingAckTimeout = setTimeout(() => {
+            if (adminRingState === 'sending') {
+                adminRingState = 'idle';
+                adminRingRequestId = null;
+                setRingBtnState('idle');
+                showToast('⚠️ User tidak merespons ring', 'warning');
+            }
+        }, RING_ACK_TIMEOUT_MS);
+
+        showToast('🔔 Memanggil user...', 'info');
+    };
 
     // ==========================================================================
     // FOCUS CONTROL HANDLERS
@@ -1393,6 +1779,7 @@
     function updateAdminControlsVisibility() {
         const userCameraBtn = document.getElementById('userCameraBtn');
         const switchUserCameraBtn = document.getElementById('switchUserCameraBtn');
+        const ringUserBtn = document.getElementById('ringUserBtn');
 
         const shouldShow = ROOM_DATA.isAdmin && ROOM_DATA.adminControlEnabled &&
                            remoteUserRole === 'user' && !!remoteSocketId;
@@ -1412,6 +1799,10 @@
         }
         if (switchUserCameraBtn) {
             switchUserCameraBtn.style.display = shouldShow ? 'flex' : 'none';
+        }
+        if (ringUserBtn) {
+            ringUserBtn.style.display = shouldShow ? 'flex' : 'none';
+            if (!shouldShow) setRingBtnState('idle');
         }
 
         if (shouldShow) {
@@ -1450,6 +1841,13 @@
     // ==========================================================================
 
     function setupEventListeners() {
+        // Prime audio context from early interaction (helps autoplay policy on Android Chrome)
+        const primeRingAudio = () => {
+            ensureRingAudioContext().catch(() => {});
+        };
+        document.addEventListener('pointerdown', primeRingAudio, { passive: true });
+        document.addEventListener('touchstart', primeRingAudio, { passive: true });
+
         // Handle visibility change (app goes to background)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -1561,10 +1959,20 @@
                     console.log('[Room] ⌨️ Keyboard shortcut: T - Toggle camera');
                     window.toggleUserCamera();
                     break;
+
+                case 'R':
+                    // Ring user toggle (admin only)
+                    if (!ROOM_DATA.isAdmin || !remoteSocketId || remoteUserRole !== 'user') {
+                        break;
+                    }
+                    event.preventDefault();
+                    console.log('[Room] ⌨️ Keyboard shortcut: R - Ring user');
+                    window.toggleUserRing();
+                    break;
             }
         });
         
-        console.log('[Room] ⌨️ Keyboard shortcuts initialized (F=Fullscreen, S=Switch Camera*, T=Toggle Camera*)');
+        console.log('[Room] ⌨️ Keyboard shortcuts initialized (F=Fullscreen, S=Switch Camera*, T=Toggle Camera*, R=Ring User*)');
         console.log('[Room] ⌨️ *=Admin only');
     }
     
@@ -1843,6 +2251,11 @@
         document.getElementById('audioBtn')?.classList.remove('active');
         if (audioResetTimeout)  { clearTimeout(audioResetTimeout);  audioResetTimeout  = null; }
         if (forceRejoinTimeout) { clearTimeout(forceRejoinTimeout); forceRejoinTimeout = null; }
+        clearAdminRingAckTimeout();
+        stopUserRingAlert('end_call', false);
+        adminRingRequestId = null;
+        adminRingState = 'idle';
+        setRingBtnState('idle');
         adminFocusCapabilities = null;
         
         if (webrtc) {

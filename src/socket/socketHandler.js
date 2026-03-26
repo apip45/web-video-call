@@ -49,6 +49,13 @@ const heartbeatTimers = new Map();
 const HEARTBEAT_INTERVAL = 10000; // 10 seconds
 const HEARTBEAT_TIMEOUT = 25000; // 25 seconds (2.5x interval)
 
+// Ring control (admin -> user notice while both are in-room)
+const ringStateByTarget = new Map(); // Menyimpan state ring per target user aktif, key: `${roomId}:${targetSocketId}`
+const RING_DEFAULT_DURATION_MS = 5000; // Durasi default ring + getar saat admin tidak mengirim durasi khusus (5 detik)
+const RING_MIN_DURATION_MS = 1000; // Batas minimum durasi ring untuk mencegah nilai terlalu kecil / tidak terasa
+const RING_MAX_DURATION_MS = 15000; // Batas maksimum durasi ring untuk mencegah ring terlalu lama / mengganggu
+const RING_COOLDOWN_MS = 1000; // Jeda minimal antar trigger ring ke target yang sama (anti-spam, 1 detik)
+
 /**
  * Setup Socket.IO handlers
  * @param {Server} io - Socket.IO server instance
@@ -817,6 +824,244 @@ const setupSocketHandlers = (io) => {
         });
 
         // =========================================================================
+        // ADMIN RING USER (in-room notice)
+        // =========================================================================
+
+        /**
+         * Admin -> Server: ask user device to ring + vibrate for a short duration.
+         */
+        socket.on('admin-ring-user', async (data) => {
+            try {
+                if (socket.userRole !== 'admin') {
+                    console.warn(`[Socket] ⚠️ Non-admin tried admin-ring-user: ${socket.username}`);
+                    return;
+                }
+                if (!await guardAdminControl(socket, 'ring-blocked')) return;
+
+                const { roomId, targetSocketId, requestId, durationMs } = data || {};
+                if (!roomId || !targetSocketId) {
+                    socket.emit('ring-blocked', { success: false, message: 'Data ring tidak lengkap' });
+                    return;
+                }
+
+                const room = await Room.findOne({ roomId });
+                if (!room) {
+                    socket.emit('ring-blocked', { success: false, message: 'Room tidak ditemukan' });
+                    return;
+                }
+
+                // Target must be a user participant in the same room
+                const target = room.participants.find(
+                    p => p.socketId === targetSocketId && p.role === 'user'
+                );
+                if (!target) {
+                    socket.emit('ring-blocked', { success: false, message: 'User tidak ditemukan di room ini' });
+                    return;
+                }
+
+                const stateKey = `${roomId}:${targetSocketId}`;
+                const existingState = ringStateByTarget.get(stateKey);
+                const now = Date.now();
+                const elapsed = existingState?.lastTriggeredAt ? now - existingState.lastTriggeredAt : Infinity;
+                if (elapsed < RING_COOLDOWN_MS) {
+                    const retryAfterMs = Math.max(0, RING_COOLDOWN_MS - elapsed);
+                    socket.emit('ring-blocked', {
+                        success: false,
+                        message: `Terlalu cepat. Coba lagi ${(retryAfterMs / 1000).toFixed(1)} detik`,
+                        retryAfterMs
+                    });
+                    return;
+                }
+
+                const safeDuration = Number.isFinite(Number(durationMs))
+                    ? Math.max(RING_MIN_DURATION_MS, Math.min(RING_MAX_DURATION_MS, Number(durationMs)))
+                    : RING_DEFAULT_DURATION_MS;
+                const safeRequestId = requestId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+                ringStateByTarget.set(stateKey, {
+                    requestId: safeRequestId,
+                    requestedBySocketId: socket.id,
+                    lastTriggeredAt: now,
+                    active: true
+                });
+
+                io.to(targetSocketId).emit('ring-command', {
+                    by: socket.username,
+                    requestId: safeRequestId,
+                    durationMs: safeDuration
+                });
+
+                socket.emit('ring-status', {
+                    success: true,
+                    status: 'sent',
+                    requestId: safeRequestId,
+                    targetSocketId,
+                    durationMs: safeDuration
+                });
+
+                console.log(`[Socket] 🔔 Admin ${socket.username} triggered ring for ${targetSocketId} (${safeDuration}ms)`);
+            } catch (err) {
+                console.error(`[Socket] ❌ admin-ring-user error: ${err.message}`);
+                socket.emit('ring-blocked', { success: false, message: 'Server error saat memproses ring' });
+            }
+        });
+
+        /**
+         * Admin -> Server: stop active ring immediately.
+         */
+        socket.on('admin-stop-ring', async (data) => {
+            try {
+                if (socket.userRole !== 'admin') {
+                    console.warn(`[Socket] ⚠️ Non-admin tried admin-stop-ring: ${socket.username}`);
+                    return;
+                }
+                if (!await guardAdminControl(socket, 'ring-blocked')) return;
+
+                const { roomId, targetSocketId, requestId } = data || {};
+                if (!roomId || !targetSocketId) {
+                    socket.emit('ring-blocked', { success: false, message: 'Data stop ring tidak lengkap' });
+                    return;
+                }
+
+                const room = await Room.findOne({ roomId });
+                if (!room) {
+                    socket.emit('ring-blocked', { success: false, message: 'Room tidak ditemukan' });
+                    return;
+                }
+
+                const target = room.participants.find(
+                    p => p.socketId === targetSocketId && p.role === 'user'
+                );
+                if (!target) {
+                    socket.emit('ring-blocked', { success: false, message: 'User tidak ditemukan di room ini' });
+                    return;
+                }
+
+                const stateKey = `${roomId}:${targetSocketId}`;
+                const existingState = ringStateByTarget.get(stateKey);
+                const activeRequestId = requestId || existingState?.requestId || null;
+
+                // Mark inactive but keep lastTriggeredAt for cooldown behavior
+                ringStateByTarget.set(stateKey, {
+                    requestId: activeRequestId,
+                    requestedBySocketId: socket.id,
+                    lastTriggeredAt: existingState?.lastTriggeredAt || Date.now(),
+                    active: false
+                });
+
+                io.to(targetSocketId).emit('ring-stop', {
+                    requestId: activeRequestId,
+                    reason: 'admin_stop',
+                    by: socket.username
+                });
+
+                socket.emit('ring-status', {
+                    success: true,
+                    status: 'stop-sent',
+                    requestId: activeRequestId,
+                    targetSocketId
+                });
+
+                console.log(`[Socket] 🔕 Admin ${socket.username} sent stop-ring to ${targetSocketId}`);
+            } catch (err) {
+                console.error(`[Socket] ❌ admin-stop-ring error: ${err.message}`);
+                socket.emit('ring-blocked', { success: false, message: 'Server error saat stop ring' });
+            }
+        });
+
+        /**
+         * User -> Server: ring has started on user device.
+         */
+        socket.on('ring-started', async (data) => {
+            try {
+                const { roomId, requestId } = data || {};
+                if (!roomId || !requestId) return;
+
+                const room = await Room.findOne({ roomId });
+                if (!room) return;
+
+                const admin = room.participants.find(p => p.role === 'admin');
+                if (!admin) return;
+
+                io.to(admin.socketId).emit('ring-started', {
+                    requestId,
+                    username: socket.username,
+                    socketId: socket.id
+                });
+            } catch (err) {
+                console.error(`[Socket] ❌ ring-started error: ${err.message}`);
+            }
+        });
+
+        /**
+         * User -> Server: ring stopped on user device.
+         */
+        socket.on('ring-stopped', async (data) => {
+            try {
+                const { roomId, requestId, reason } = data || {};
+                if (!roomId) return;
+
+                const room = await Room.findOne({ roomId });
+                if (!room) return;
+
+                const admin = room.participants.find(p => p.role === 'admin');
+                if (admin) {
+                    io.to(admin.socketId).emit('ring-stopped', {
+                        requestId: requestId || null,
+                        reason: reason || 'user_stopped',
+                        username: socket.username,
+                        socketId: socket.id
+                    });
+                }
+
+                const stateKey = `${roomId}:${socket.id}`;
+                const existingState = ringStateByTarget.get(stateKey);
+                if (existingState) {
+                    ringStateByTarget.set(stateKey, {
+                        ...existingState,
+                        active: false
+                    });
+                }
+            } catch (err) {
+                console.error(`[Socket] ❌ ring-stopped error: ${err.message}`);
+            }
+        });
+
+        /**
+         * User -> Server: ring command failed to execute on user device.
+         */
+        socket.on('ring-failed', async (data) => {
+            try {
+                const { roomId, requestId, reason } = data || {};
+                if (!roomId) return;
+
+                const room = await Room.findOne({ roomId });
+                if (!room) return;
+
+                const admin = room.participants.find(p => p.role === 'admin');
+                if (admin) {
+                    io.to(admin.socketId).emit('ring-failed', {
+                        requestId: requestId || null,
+                        reason: reason || 'unknown',
+                        username: socket.username,
+                        socketId: socket.id
+                    });
+                }
+
+                const stateKey = `${roomId}:${socket.id}`;
+                const existingState = ringStateByTarget.get(stateKey);
+                if (existingState) {
+                    ringStateByTarget.set(stateKey, {
+                        ...existingState,
+                        active: false
+                    });
+                }
+            } catch (err) {
+                console.error(`[Socket] ❌ ring-failed error: ${err.message}`);
+            }
+        });
+
+        // =========================================================================
         // LEAVE ROOM
         // =========================================================================
         socket.on('leave-room', async (data) => {
@@ -851,6 +1096,9 @@ async function handleLeaveRoom(socket, io, roomId) {
 
         const room = await Room.findOne({ roomId: roomId });
         if (room) {
+            // Cleanup ring state where this socket is target in this room
+            ringStateByTarget.delete(`${roomId}:${socket.id}`);
+
             // Remove participant
             const removed = room.removeParticipant(socket.id);
             room.lastActivity = new Date();
