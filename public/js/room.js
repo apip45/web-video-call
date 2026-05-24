@@ -21,6 +21,7 @@
     let isFullscreen = false;
     let isPipHidden = false;
     let isVideoHidden = false; // For non-admin visual state
+    let isMirrorPreviewOn = false; // User-only mirror preview state
     let isRemoteBlank = false; // For admin to blank remote video (visual)
     let isUserCameraDisabled = false; // For admin to control user camera
     let statsInterval = null;
@@ -72,6 +73,7 @@
         localMuteIndicator: document.getElementById('localMuteIndicator'),
         micBtn: document.getElementById('micBtn'),
         cameraBtn: document.getElementById('cameraBtn'),
+        mirrorBtn: document.getElementById('mirrorBtn'),
         switchCameraBtn: document.getElementById('switchCameraBtn'),
         screenShareBtn: document.getElementById('screenShareBtn'),
         hidePipBtn: document.getElementById('hidePipBtn'),
@@ -347,15 +349,40 @@
                 videoTrack.enabled = true;
                 webrtc.isCameraTrackEnabled = true;
                 // Keep default visual state as "off" for user preview
-                elements.localVideo.style.visibility = 'hidden';
-                isVideoHidden = true;
                 webrtc.isCameraHidden = true;
-                elements.cameraBtn.classList.add('camera-off');
+                setUserPreviewVisibility(true);
             }
         } catch (error) {
             console.error('[Room] ❌ Failed to get local stream:', error);
             showToast('Gagal mengakses kamera/mikrofon', 'error');
             throw error;
+        }
+    }
+
+    function setUserPreviewVisibility(isHidden) {
+        if (ROOM_DATA.isAdmin) return;
+
+        isVideoHidden = !!isHidden;
+        isMirrorPreviewOn = !isVideoHidden;
+
+        if (elements.localVideo) {
+            elements.localVideo.style.visibility = isVideoHidden ? 'hidden' : 'visible';
+        }
+
+        if (elements.cameraBtn) {
+            if (isVideoHidden) {
+                elements.cameraBtn.classList.add('camera-off');
+            } else {
+                elements.cameraBtn.classList.remove('camera-off');
+            }
+        }
+
+        if (elements.mirrorBtn) {
+            if (isMirrorPreviewOn) {
+                elements.mirrorBtn.classList.add('active');
+            } else {
+                elements.mirrorBtn.classList.remove('active');
+            }
         }
     }
 
@@ -700,9 +727,7 @@
                 }
                 // Keep user-side preview hidden even when track is forced ON by admin
                 webrtc.isCameraHidden = true;
-                isVideoHidden = true;
-                if (elements.localVideo) elements.localVideo.style.visibility = 'hidden';
-                if (elements.cameraBtn) elements.cameraBtn.classList.add('camera-off');
+                setUserPreviewVisibility(true);
                 webrtc.isAdminDisabled = false;
                 console.log('[Room] 👑 Track enabled by admin, preview kept hidden');
             } else if (data.action === 'off') {
@@ -713,9 +738,7 @@
                     console.log(`[Room] 👑 Video track disabled: ${videoTrack.enabled}`);
                 }
                 webrtc.isCameraHidden = true;
-                isVideoHidden = true;
-                if (elements.localVideo) elements.localVideo.style.visibility = 'hidden';
-                if (elements.cameraBtn) elements.cameraBtn.classList.add('camera-off');
+                setUserPreviewVisibility(true);
                 webrtc.isAdminDisabled = true;
                 console.log('[Room] 👑 Track disabled by admin');
             } else {
@@ -2135,15 +2158,22 @@
         } else {
             // Non-admin (user): visual toggle; if track was OFF it gets turned ON first
             isVideoHidden = result.isCameraHidden;
-            elements.localVideo.style.visibility = isVideoHidden ? 'hidden' : 'visible';
-            if (isVideoHidden) {
-                elements.cameraBtn.classList.add('camera-off');
-            } else {
-                elements.cameraBtn.classList.remove('camera-off');
-            }
+            setUserPreviewVisibility(isVideoHidden);
         }
 
         console.log(`[Room] 📹 Camera toggle: role=${ROOM_DATA.userRole}, hidden=${result.isCameraHidden}, trackEnabled=${result.isCameraTrackEnabled}`);
+    };
+
+    window.toggleMirrorPreview = async function() {
+        if (ROOM_DATA.isAdmin) return;
+        if (!ROOM_DATA.adminControlEnabled) {
+            showToast('Kontrol admin sedang dinonaktifkan', 'warning');
+            return;
+        }
+        if (!webrtc) return;
+
+        // Mirror preview is visual-only for user, reuse camera toggle for consistency.
+        await window.toggleCamera();
     };
 
     window.switchCamera = async function() {
