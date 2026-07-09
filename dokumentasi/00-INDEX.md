@@ -2,7 +2,7 @@
 
 ## 📑 Table of Contents
 
-Dokumentasi ini terdiri dari **8 file komprehensif** yang mencakup semua aspek aplikasi video call website:
+Dokumentasi ini terdiri dari file inti dan dokumen kontrak tambahan yang mencakup semua aspek aplikasi video call website dan mobile:
 
 | No. | File | Fokus | Audience |
 |-----|------|-------|----------|
@@ -14,6 +14,10 @@ Dokumentasi ini terdiri dari **8 file komprehensif** yang mencakup semua aspek a
 | 6 | [06-FRONTEND_ARCHITECTURE.md](06-FRONTEND_ARCHITECTURE.md) | UI & JavaScript | Frontend Dev |
 | 7 | [07-WEBRTC_IMPLEMENTATION.md](07-WEBRTC_IMPLEMENTATION.md) | Media & P2P | WebRTC Dev |
 | 8 | [08-DEPLOYMENT.md](08-DEPLOYMENT.md) | Production Setup | DevOps/Admin |
+| 9 | [09-IMPROVEMENT_LIST.md](09-IMPROVEMENT_LIST.md) | Gap Analysis & Fix List | All Devs |
+| 10 | [10-API_CONTRACT_FINAL.md](10-API_CONTRACT_FINAL.md) | Final REST Contract | Web/Mobile Dev |
+| 11 | [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md) | Final Socket Signaling Contract | Web/Mobile Dev |
+| 12 | [12-FLOW_REFERENCE.md](12-FLOW_REFERENCE.md) | Auth, Room, and Call Flow | All Devs |
 
 ---
 
@@ -25,8 +29,8 @@ Dokumentasi ini terdiri dari **8 file komprehensif** yang mencakup semua aspek a
 1. Start: [01-OVERVIEW.md](01-OVERVIEW.md) - Understand architecture
 2. Setup: [02-SETUP.md](02-SETUP.md) - Getting started
 3. Database: [03-DATABASE_MODELS.md](03-DATABASE_MODELS.md) - Data models
-4. Server: [04-API_ENDPOINTS.md](04-API_ENDPOINTS.md) - API design
-5. Signaling: [05-SOCKET_EVENTS.md](05-SOCKET_EVENTS.md) - Real-time events
+4. Server: [10-API_CONTRACT_FINAL.md](10-API_CONTRACT_FINAL.md) - Final API contract
+5. Signaling: [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md) - Final real-time contract
 
 **Key Tasks**:
 - ✅ Understand room & user model
@@ -43,8 +47,8 @@ Dokumentasi ini terdiri dari **8 file komprehensif** yang mencakup semua aspek a
 1. Overview: [01-OVERVIEW.md](01-OVERVIEW.md)
 2. Setup: [02-SETUP.md](02-SETUP.md)
 3. Frontend: [06-FRONTEND_ARCHITECTURE.md](06-FRONTEND_ARCHITECTURE.md) ⭐
-4. WebRTC: [07-WEBRTC_IMPLEMENTATION.md](07-WEBRTC_IMPLEMENTATION.md)
-5. Signaling: [05-SOCKET_EVENTS.md](05-SOCKET_EVENTS.md)
+4. WebRTC: [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md)
+5. Flow: [12-FLOW_REFERENCE.md](12-FLOW_REFERENCE.md)
 
 **Key Tasks**:
 - ✅ Understand DOM structure & caching
@@ -59,9 +63,9 @@ Dokumentasi ini terdiri dari **8 file komprehensif** yang mencakup semua aspek a
 
 **Reading Order**:
 1. Overview: [01-OVERVIEW.md](01-OVERVIEW.md) - Architecture
-2. API: [04-API_ENDPOINTS.md](04-API_ENDPOINTS.md) ⭐ - REST endpoints
-3. Signaling: [05-SOCKET_EVENTS.md](05-SOCKET_EVENTS.md) ⭐ - Socket events
-4. WebRTC: [07-WEBRTC_IMPLEMENTATION.md](07-WEBRTC_IMPLEMENTATION.md) - Media
+2. API: [10-API_CONTRACT_FINAL.md](10-API_CONTRACT_FINAL.md) ⭐ - REST contract
+3. Signaling: [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md) ⭐ - Socket contract
+4. Flow: [12-FLOW_REFERENCE.md](12-FLOW_REFERENCE.md) - End-to-end flow
 
 **Key Tasks**:
 - ✅ Implement REST API client
@@ -108,11 +112,11 @@ Dokumentasi ini terdiri dari **8 file komprehensif** yang mencakup semua aspek a
 ### Scenario 1: Adding a New API Endpoint
 
 **Steps**:
-1. Read: [04-API_ENDPOINTS.md](04-API_ENDPOINTS.md) - Response format
+1. Read: [10-API_CONTRACT_FINAL.md](10-API_CONTRACT_FINAL.md) - Response format
 2. Read: [03-DATABASE_MODELS.md](03-DATABASE_MODELS.md) - Data structure
 3. Edit: `src/routes/api.js` - Add route
 4. Edit: `src/models/*.js` - Add query if needed
-5. Test: Use cURL examples from [04-API_ENDPOINTS.md](04-API_ENDPOINTS.md)
+5. Test: Use examples from [10-API_CONTRACT_FINAL.md](10-API_CONTRACT_FINAL.md)
 
 ---
 
@@ -138,7 +142,7 @@ qualitySelect.addEventListener('change', (e) => {
 ### Scenario 3: Adding Admin Control Feature
 
 **Steps**:
-1. Read: [05-SOCKET_EVENTS.md](05-SOCKET_EVENTS.md) - Admin events section
+1. Read: [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md) - Admin events section
 2. Edit: `src/socket/socketHandler.js` - Add event handler
 3. Edit: `public/js/room.js` - Add UI button
 4. Edit: `src/views/room.ejs` - Add button if admin
@@ -163,7 +167,7 @@ User's webrtc.disableCameraTrack()
 
 **Steps**:
 1. Read: [01-OVERVIEW.md](01-OVERVIEW.md) - Dual mode section
-2. Read: [07-WEBRTC_IMPLEMENTATION.md](07-WEBRTC_IMPLEMENTATION.md) - SFU section
+2. Read: [12-FLOW_REFERENCE.md](12-FLOW_REFERENCE.md) - WebRTC flow notes
 3. Setup: Install & run Ion-SFU server
 4. Edit: `.env` - Set `WEBRTC_MODE=sfu`
 5. Edit: `src/config/webrtc.js` - Update SFU URL
@@ -182,7 +186,7 @@ User's webrtc.disableCameraTrack()
 2. **Check Socket.IO**:
    - Browser DevTools → Network → WS
    - Look for `/socket.io/?EIO=...` connection
-   - Check [05-SOCKET_EVENTS.md](05-SOCKET_EVENTS.md) for expected events
+   - Check [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md) for expected events
 
 3. **Check WebRTC State**:
    - Open browser console
@@ -192,6 +196,17 @@ User's webrtc.disableCameraTrack()
 4. **Check Firewall**:
    - See [02-SETUP.md](02-SETUP.md) - Network Requirements
    - Open ports: 3000 (HTTP), 50000-57000 (UDP), 3478 (TURN)
+
+---
+
+## 📚 Contract Documents
+
+### Recommended Source of Truth
+
+- [09-IMPROVEMENT_LIST.md](09-IMPROVEMENT_LIST.md) - Daftar gap dan prioritas perbaikan
+- [10-API_CONTRACT_FINAL.md](10-API_CONTRACT_FINAL.md) - Kontrak REST API final untuk web dan mobile
+- [11-WEBRTC_SIGNALING_CONTRACT_FINAL.md](11-WEBRTC_SIGNALING_CONTRACT_FINAL.md) - Kontrak Socket.IO / signaling final
+- [12-FLOW_REFERENCE.md](12-FLOW_REFERENCE.md) - Flow auth, room, join, dan call end-to-end
 
 ---
 
