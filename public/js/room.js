@@ -70,6 +70,7 @@
         remoteUsername: document.getElementById('remoteUsername'),
         remoteMuteIndicator: document.getElementById('remoteMuteIndicator'),
         remoteCameraIndicator: document.getElementById('remoteCameraIndicator'),
+        remoteMirrorIndicator: document.getElementById('remoteMirrorIndicator'),
         localMuteIndicator: document.getElementById('localMuteIndicator'),
         micBtn: document.getElementById('micBtn'),
         cameraBtn: document.getElementById('cameraBtn'),
@@ -363,10 +364,14 @@
         if (ROOM_DATA.isAdmin) return;
 
         isVideoHidden = !!isHidden;
-        isMirrorPreviewOn = !isVideoHidden;
 
+        // Mirror: sync from webrtc state (mirror is independent from camera)
+        isMirrorPreviewOn = webrtc ? webrtc.isMirrorOn : false;
+
+        // Preview is visible if camera is shown OR mirror mode is on
+        const showPreview = !isVideoHidden || isMirrorPreviewOn;
         if (elements.localVideo) {
-            elements.localVideo.style.visibility = isVideoHidden ? 'hidden' : 'visible';
+            elements.localVideo.style.visibility = showPreview ? 'visible' : 'hidden';
         }
 
         if (elements.cameraBtn) {
@@ -646,8 +651,8 @@
     }
 
     function handleRemoteMediaStatus(data) {
-        console.log(`[Room] 📡 Remote media status from ${data.username} (${data.userRole}): muted=${data.isMuted}, cameraHidden=${data.isCameraHidden}, trackEnabled=${data.isCameraTrackEnabled}`);
-        
+        console.log(`[Room] 📡 Remote media status from ${data.username} (${data.userRole}): muted=${data.isMuted}, cameraHidden=${data.isCameraHidden}, trackEnabled=${data.isCameraTrackEnabled}, mirror=${data.isMirrorOn}`);
+
         // Store remote socket ID and role if available (keeps remoteSocketId always fresh)
         if (data.socketId) {
             if (!remoteSocketId) {
@@ -659,7 +664,7 @@
                 updateAdminControlsVisibility();
             }
         }
-        
+
         // Update mute indicator
         if (data.isMuted) {
             elements.remoteMuteIndicator.classList.remove('hidden');
@@ -685,7 +690,7 @@
             if (data.isCameraHidden) {
                 // Only show indicator visually, but admin can still see the video
                 elements.remoteCameraIndicator.classList.remove('hidden');
-                
+
                 // Notify admin that user thinks they turned off camera
                 if (ROOM_DATA.isAdmin) {
                     showToast(`ℹ️ ${data.username || 'User'} mengira kamera off (tetap terlihat)`, 'info');
@@ -693,6 +698,13 @@
             } else {
                 elements.remoteCameraIndicator.classList.add('hidden');
             }
+        }
+
+        // Mirror indicator: independent from camera — shows mirror/flip mode status
+        if (data.isMirrorOn) {
+            elements.remoteMirrorIndicator.classList.remove('hidden');
+        } else {
+            elements.remoteMirrorIndicator.classList.add('hidden');
         }
     }
 
@@ -2172,8 +2184,11 @@
         }
         if (!webrtc) return;
 
-        // Mirror preview is visual-only for user, reuse camera toggle for consistency.
-        await window.toggleCamera();
+        // Toggle mirror independently — does NOT affect camera state
+        const result = webrtc.toggleMirror();
+        setUserPreviewVisibility(isVideoHidden);
+
+        console.log(`[Room] 🪞 Mirror preview: ${result.isMirrorOn ? 'ON' : 'OFF'}`);
     };
 
     window.switchCamera = async function() {

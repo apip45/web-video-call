@@ -94,6 +94,11 @@
     height: 0.875rem;
 }
 
+/* Mirror indicator: different color from camera (blue/purple vs red) */
+.mirror-indicator {
+    background: rgba(99, 102, 241, 0.9); /* Indigo/ungu — berbeda dari merah kamera */
+}
+
 .status-indicator.hidden {
     display: none;
 }
@@ -192,7 +197,7 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-    transform: scaleX(-1); /* Mirror effect */
+    transform: scaleX(-1); /* Default mirror — JS overrides for user toggle */
 }
 
 .local-label {

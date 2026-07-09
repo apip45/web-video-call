@@ -30,6 +30,7 @@ class WebRTCHandler {
         this.isMuted = false;
         this.isCameraTrackEnabled = true; // Actual track enabled state
         this.isCameraHidden = false; // Visual state (for non-admin preview)
+        this.isMirrorOn = false; // Mirror mode: default OFF
         this.isAdminDisabled = false; // Track if admin has disabled user's camera
         this.userHiddenBeforeAdmin = false; // User's visual state before admin control
         this.usingSpeaker = true;
@@ -563,6 +564,18 @@ class WebRTCHandler {
     }
 
     /**
+     * Toggle mirror mode (visual only — duplicate camera preview toggle)
+     * Lets user see themselves like a mirror. Same exam-mode behavior as camera.
+     * Does NOT affect camera track or isCameraHidden state.
+     */
+    toggleMirror() {
+        this.isMirrorOn = !this.isMirrorOn;
+        console.log(`[WebRTC] 🪞 Mirror: ${this.isMirrorOn ? 'ON' : 'OFF'}`);
+        this.sendMediaStatus();
+        return { isMirrorOn: this.isMirrorOn };
+    }
+
+    /**
      * Toggle camera on/off
      * For admin: toggle actual track enabled state
      * For non-admin (user): if track is OFF then turn track ON; if track is ON then toggle visual only
@@ -745,7 +758,8 @@ class WebRTCHandler {
                 roomId: this.roomId,
                 isMuted: this.isMuted,
                 isCameraHidden: this.isCameraHidden,
-                isCameraTrackEnabled: videoTrack ? videoTrack.enabled : false
+                isCameraTrackEnabled: videoTrack ? videoTrack.enabled : false,
+                isMirrorOn: this.isMirrorOn
             });
         }
     }

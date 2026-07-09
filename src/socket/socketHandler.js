@@ -310,8 +310,8 @@ const setupSocketHandlers = (io) => {
         // =========================================================================
         socket.on('media-status', async (data) => {
             try {
-                const { roomId, isMuted, isCameraHidden, isCameraTrackEnabled } = data;
-                console.log(`[Socket] 🎤 Media status from ${socket.username} (${socket.userRole}): muted=${isMuted}, cameraHidden=${isCameraHidden}, trackEnabled=${isCameraTrackEnabled}`);
+                const { roomId, isMuted, isCameraHidden, isCameraTrackEnabled, isMirrorOn } = data;
+                console.log(`[Socket] 🎤 Media status from ${socket.username} (${socket.userRole}): muted=${isMuted}, cameraHidden=${isCameraHidden}, trackEnabled=${isCameraTrackEnabled}, mirror=${isMirrorOn}`);
 
                 // Update di database
                 const room = await Room.findOne({ roomId: roomId });
@@ -335,7 +335,8 @@ const setupSocketHandlers = (io) => {
                         // For admin viewing non-admin: show visual status but track is always on
                         // For anyone viewing admin: show actual track state
                         isCameraHidden: isCameraHidden,
-                        isCameraTrackEnabled: isCameraTrackEnabled
+                        isCameraTrackEnabled: isCameraTrackEnabled,
+                        isMirrorOn: isMirrorOn
                     });
                 }
             } catch (error) {
