@@ -20,6 +20,7 @@
     let remoteUserRole = null; // Role of the remote user ('admin' or 'user')
     let isFullscreen = false;
     let isPipHidden = false;
+    let isPipEnlarged = false;
     let isVideoHidden = false; // For non-admin visual state
     let isMirrorPreviewOn = false; // User-only mirror preview state
     let isRemoteBlank = false; // For admin to blank remote video (visual)
@@ -128,6 +129,12 @@
 
             // Make PIP draggable
             makePIPDraggable();
+
+            // Double-click PIP to enlarge/shrink
+            elements.localVideoWrapper.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                window.togglePipEnlarge();
+            });
 
             // Start stats collection for all users (mini stats visible to everyone)
             // Admin also gets the full stats panel + sends stats to server
@@ -2357,6 +2364,17 @@
         }
         
         console.log(`[Room] 👁️ PIP: ${isPipHidden ? 'HIDDEN' : 'VISIBLE'}`);
+    };
+
+    // Enlarge/Shrink PIP (Double-click or button)
+    window.togglePipEnlarge = function() {
+        isPipEnlarged = !isPipEnlarged;
+        if (isPipEnlarged) {
+            elements.localVideoWrapper.classList.add('pip-enlarged');
+        } else {
+            elements.localVideoWrapper.classList.remove('pip-enlarged');
+        }
+        console.log(`[Room] 🔍 PIP: ${isPipEnlarged ? 'ENLARGED' : 'NORMAL'}`);
     };
 
     // Hide/Show Buttons (Admin Only) - Hide all buttons except hide button and admin buttons
