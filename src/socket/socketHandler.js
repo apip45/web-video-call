@@ -48,6 +48,7 @@ async function guardAdminControl(socket, responseEvent) {
 const heartbeatTimers = new Map();
 const HEARTBEAT_INTERVAL = 10000; // 10 seconds
 const HEARTBEAT_TIMEOUT = 25000; // 25 seconds (2.5x interval)
+const MAX_MISSED_PONGS = 5; // Disconnect setelah 5x gagal pong berturut-turut
 
 // Ring control (admin -> user notice while both are in-room)
 const ringStateByTarget = new Map(); // Menyimpan state ring per target user aktif, key: `${roomId}:${targetSocketId}`
@@ -1226,6 +1227,44 @@ function startPeriodicCleanup() {
  */
 
 /**
+ * Create a heartbeat timeout for a socket.
+ * When the timeout fires:
+ *   1. Increment the missed-pongs counter.
+ *   2. If counter < MAX_MISSED_PONGS: set a new timeout and retry.
+ *   3. If counter >= MAX_MISSED_PONGS: disconnect the socket.
+ * When a pong is received (via resetHeartbeat), the counter resets to 0.
+ */
+function createHeartbeatTimeout(socket) {
+    return setTimeout(() => {
+        const timers = heartbeatTimers.get(socket.id);
+        if (!timers) return; // already cleaned up
+
+        if (!socket.connected) {
+            stopHeartbeat(socket); // socket gone, clean up
+            return;
+        }
+
+        timers.missedPongs = (timers.missedPongs || 0) + 1;
+
+        if (timers.missedPongs >= MAX_MISSED_PONGS) {
+            console.warn(
+                `[Heartbeat] ❌ Max missed pongs (${MAX_MISSED_PONGS}) reached ` +
+                `for ${socket.username} - disconnecting`
+            );
+            socket.disconnect(true);
+        } else {
+            console.warn(
+                `[Heartbeat] ⚠️ No pong received from ${socket.username} ` +
+                `(missed ${timers.missedPongs}/${MAX_MISSED_PONGS}) - retrying`
+            );
+            // Schedule the next retry
+            timers.timeout = createHeartbeatTimeout(socket);
+            heartbeatTimers.set(socket.id, timers);
+        }
+    }, HEARTBEAT_TIMEOUT);
+}
+
+/**
  * Start heartbeat for a socket
  */
 function startHeartbeat(socket) {
@@ -1238,15 +1277,13 @@ function startHeartbeat(socket) {
         }
     }, HEARTBEAT_INTERVAL);
 
-    // Set timeout to detect if pong is not received
-    const timeout = setTimeout(() => {
-        if (socket.connected) {
-            console.warn(`[Heartbeat] ⚠️ No pong received from ${socket.username} - disconnecting`);
-            socket.disconnect(true);
-        }
-    }, HEARTBEAT_TIMEOUT);
+    const timeout = createHeartbeatTimeout(socket);
 
-    heartbeatTimers.set(socket.id, { interval: heartbeat, timeout: timeout });
+    heartbeatTimers.set(socket.id, {
+        interval: heartbeat,
+        timeout: timeout,
+        missedPongs: 0
+    });
 }
 
 /**
@@ -1254,18 +1291,21 @@ function startHeartbeat(socket) {
  */
 function resetHeartbeat(socket) {
     const timers = heartbeatTimers.get(socket.id);
-    if (timers && timers.timeout) {
-        clearTimeout(timers.timeout);
-        
-        // Set new timeout
-        const timeout = setTimeout(() => {
-            if (socket.connected) {
-                console.warn(`[Heartbeat] ⚠️ No pong received from ${socket.username} - disconnecting`);
-                socket.disconnect(true);
-            }
-        }, HEARTBEAT_TIMEOUT);
-        
-        timers.timeout = timeout;
+    if (timers) {
+        if (timers.timeout) {
+            clearTimeout(timers.timeout);
+        }
+
+        // Log recovery if we had missed pongs
+        if (timers.missedPongs > 0) {
+            console.log(
+                `[Heartbeat] ✅ Pong recovered for ${socket.username} ` +
+                `after ${timers.missedPongs} missed pong(s)`
+            );
+        }
+
+        timers.missedPongs = 0; // reset the counter
+        timers.timeout = createHeartbeatTimeout(socket); // fresh timeout
         heartbeatTimers.set(socket.id, timers);
     }
 }
