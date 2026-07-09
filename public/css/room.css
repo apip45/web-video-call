@@ -417,11 +417,41 @@
     .control-btn {
         flex-shrink: 0;
     }
+
+    .btn-wrapper {
+        gap: 3px;
+    }
+
+    .btn-label {
+        font-size: 0.55rem;
+    }
 }
 
 /* =============================================================================
    CONTROL BUTTONS
    ============================================================================= */
+
+/* Button wrapper: icon circle + text label below */
+.btn-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Label text below control button icon */
+.btn-label {
+    font-size: 0.6rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.75);
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+}
+
 .control-btn {
     display: flex;
     align-items: center;
@@ -748,6 +778,10 @@
         width: 100px;
         height: 75px;
         bottom: 70px;
+    }
+
+    .btn-label {
+        font-size: 0.5rem;
     }
 }
 
