@@ -337,6 +337,61 @@
         </div>
         <% } %>
 
+        <!-- Stream Panel (MediaMTX / OBS) -->
+        <% if (mediaMtxEnabled) { %>
+        <div class="stream-panel" id="streamPanel">
+            <div class="stream-panel-header">
+                <span>📡 Stream via OBS</span>
+                <button class="btn-close" onclick="toggleStreamPanel()">&times;</button>
+            </div>
+            <div class="stream-panel-body">
+                <!-- Status -->
+                <div class="stream-status" id="streamStatus">
+                    <span class="stream-status-dot" id="streamStatusDot"></span>
+                    <span id="streamStatusText">Belum aktif</span>
+                </div>
+
+                <!-- Actions -->
+                <div class="stream-actions">
+                    <button class="stream-session-btn" id="streamSessionBtn" onclick="toggleStreamSession()">
+                        Aktifkan Sesi Stream
+                    </button>
+                    <button class="stream-watch-btn" id="streamWatchBtn" onclick="toggleStreamWatch()" disabled>
+                        Tonton Stream
+                    </button>
+                </div>
+
+                <!-- Setup OBS -->
+                <div id="streamSetup">
+                    <div class="quality-section">
+                        <label class="quality-label">WHIP Server (OBS → Settings → Stream)</label>
+                        <div class="stream-copy-row">
+                            <input type="text" class="quality-input stream-input" id="streamWhipUrl" readonly>
+                            <button class="stream-copy-btn" onclick="copyStreamField('streamWhipUrl', 'URL WHIP disalin')">Copy</button>
+                        </div>
+                    </div>
+                    <div class="quality-section">
+                        <label class="quality-label">Bearer Token</label>
+                        <div class="stream-copy-row">
+                            <input type="password" class="quality-input stream-input" id="streamToken" readonly>
+                            <button class="stream-copy-btn" onclick="copyStreamField('streamToken', 'Token disalin')">Copy</button>
+                        </div>
+                    </div>
+                    <div class="stream-hint">
+                        <p>1. OBS → Settings → Stream → Service: <strong>WHIP</strong></p>
+                        <p>2. Tempel Server URL &amp; Bearer Token di atas</p>
+                        <p>3. Encoder H264 (tanpa B-frame), audio Opus 48kHz</p>
+                        <p>4. Klik <strong>Start Streaming</strong> di OBS</p>
+                    </div>
+                </div>
+
+                <div class="stream-note">
+                    Saat stream aktif, mikrofon web diambil alih oleh OBS agar audio tidak dobel.
+                </div>
+            </div>
+        </div>
+        <% } %>
+
         <!-- Mini Stats (All Users) -->
         <div class="mini-stats" id="miniStats">
             <span id="miniPacketLoss">-</span>
@@ -438,6 +493,21 @@
                 </button>
                 <span class="btn-label">Layar</span>
             </div>
+
+            <% if (mediaMtxEnabled) { %>
+            <!-- Stream via OBS (MediaMTX) -->
+            <div class="btn-wrapper">
+                <button class="control-btn" id="streamBtn" onclick="toggleStreamPanel()" title="Stream via OBS">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M2 16.1A5 5 0 0 1 5.9 20"/>
+                        <path d="M2 12.05A9 9 0 0 1 9.95 20"/>
+                        <path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/>
+                        <line x1="2" y1="20" x2="2.01" y2="20"/>
+                    </svg>
+                </button>
+                <span class="btn-label">Stream</span>
+            </div>
+            <% } %>
 
             <!-- Hide PIP (Desktop Only) -->
             <div class="btn-wrapper desktop-only">
@@ -646,7 +716,8 @@
             iceServers: <%- iceServers %>,
             videoSettings: <%- videoSettings %>,
             webrtcMode: '<%= webrtcMode %>',  // 'mesh' or 'sfu'
-            ionSFUConfig: <%- ionSFUConfig %>
+            ionSFUConfig: <%- ionSFUConfig %>,
+            mediaMtx: <%- mediaMtxConfig %>
         };
         
         console.log('[Room] 🎯 WebRTC Mode:', ROOM_DATA.webrtcMode);
@@ -662,6 +733,7 @@
     <% if (webrtcMode === 'sfu') { %>
     <script src="/js/ionSFUClient.js"></script>
     <% } %>
+    <script src="/js/whepClient.js"></script>
     <script src="/js/webrtc.js"></script>
     <script src="/js/room.js"></script>
 </body>

@@ -14,6 +14,7 @@ Menggunakan WebRTC untuk media dan Socket.IO untuk signaling.
 - ✅ Indikator mute & camera off
 - ✅ Fullscreen video lawan bicara
 - ✅ Picture-in-Picture untuk video sendiri (draggable)
+- ✅ Stream layar via OBS (WHIP → MediaMTX → WHEP, dengan audio)
 - ✅ Auto reconnect WebRTC (max 5x)
 - ✅ Dark & Light mode
 - ✅ Mobile-first design
@@ -23,7 +24,8 @@ Menggunakan WebRTC untuk media dan Socket.IO untuk signaling.
 - **Backend**: Node.js, Express.js
 - **Frontend**: EJS, Vanilla JavaScript
 - **Real-time**: Socket.IO
-- **Media**: WebRTC
+- **Media**: WebRTC (mesh/SFU)
+- **Streaming**: OBS (WHIP) → MediaMTX → WHEP (lihat [MEDIAMTX_SETUP.md](MEDIAMTX_SETUP.md))
 - **Database**: MongoDB Atlas
 - **Session**: Express Session + connect-mongo
 - **TURN Server**: CoTURN (external)
@@ -65,6 +67,15 @@ TURN_SERVER_CREDENTIAL=turnpassword
 
 # STUN Server (optional)
 STUN_SERVER_URL=stun:stun.l.google.com:19302
+
+# MediaMTX (fitur Stream/OBS) - lihat MEDIAMTX_SETUP.md
+MEDIAMTX_ENABLED=false
+MEDIAMTX_PUBLIC_URL=https://media.mikan.my.id
+MEDIAMTX_API_URL=http://127.0.0.1:9997
+MEDIAMTX_PATH_PREFIX=room-
+MEDIAMTX_AUTH_SECRET=change-me-mediamtx-auth-secret
+MEDIAMTX_HOOK_SECRET=change-me-mediamtx-hook-secret
+MEDIAMTX_TOKEN_TTL=7200
 ```
 
 ### 3. Run the Server
@@ -201,6 +212,8 @@ Aplikasi ini dioptimasi untuk mobile:
 - `answer` - Send WebRTC answer
 - `ice-candidate` - Send ICE candidate
 - `media-status` - Update mic/camera status
+- `screen-share-status` - Update status share screen (browser)
+- `stream-session-status` - Aktif/mati sesi stream OBS (MediaMTX)
 - `leave-room` - Leave room
 - `reconnect-request` - Request reconnection
 
@@ -213,6 +226,10 @@ Aplikasi ini dioptimasi untuk mobile:
 - `answer` - Receive answer
 - `ice-candidate` - Receive ICE candidate
 - `media-status` - Receive remote media status
+- `screen-share-status` - Receive remote screen share status
+- `stream-session-status` - Peer mengaktifkan/mematikan sesi stream
+- `stream-available` - Stream OBS live (mulai tonton WHEP)
+- `stream-unavailable` - Stream OBS berakhir
 - `reconnect-peer` - Reconnection request
 - `error` - Error message
 

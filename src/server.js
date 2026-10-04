@@ -23,6 +23,7 @@ const authRoutes = require('./routes/auth');
 const roomRoutes = require('./routes/room');
 const adminRoutes = require('./routes/admin');
 const apiRoutes = require('./routes/api'); // API untuk mobile app
+const mediaMtxRoutes = require('./routes/mediamtx'); // Integrasi MediaMTX (stream OBS)
 
 // Import middleware
 const { attachUserToLocals } = require('./middleware/auth');
@@ -51,6 +52,9 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// Expose io ke route (dipakai hook MediaMTX untuk broadcast socket)
+app.set('io', io);
 
 // =============================================================================
 // MIDDLEWARE SETUP
@@ -101,6 +105,9 @@ app.use(attachUserToLocals);
 
 // API routes untuk mobile app (sebelum web routes)
 app.use('/api', apiRoutes);
+
+// Integrasi MediaMTX (auth, hook, status stream)
+app.use('/api/mediamtx', mediaMtxRoutes);
 
 // Auth routes
 app.use('/', authRoutes);

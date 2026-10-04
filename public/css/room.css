@@ -1799,3 +1799,244 @@
     }
 }
 
+/* =============================================================================
+   STREAM PANEL (MediaMTX / OBS)
+   ============================================================================= */
+.stream-panel {
+    position: absolute;
+    top: 70px;
+    right: var(--spacing-md);
+    width: 320px;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.90);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 16;
+    display: none;
+}
+
+.stream-panel.visible {
+    display: block;
+    animation: slideInRight 0.3s ease;
+}
+
+.stream-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: 600;
+    color: white;
+    font-size: 0.9rem;
+    position: sticky;
+    top: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 1;
+}
+
+.stream-panel-header .btn-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stream-panel-header .btn-close:hover {
+    color: white;
+}
+
+.stream-panel-body {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.stream-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.75);
+    padding: var(--spacing-sm);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+}
+
+.stream-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    flex-shrink: 0;
+}
+
+.stream-status-dot.waiting {
+    background: #f59e0b;
+    animation: streamPulse 1.2s ease-in-out infinite;
+}
+
+.stream-status-dot.live {
+    background: #ef4444;
+    animation: streamPulse 1s ease-in-out infinite;
+}
+
+@keyframes streamPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.stream-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.stream-session-btn,
+.stream-watch-btn {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.stream-session-btn {
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    color: #60a5fa;
+}
+
+.stream-session-btn:hover {
+    background: rgba(59, 130, 246, 0.22);
+    border-color: rgba(59, 130, 246, 0.6);
+}
+
+.stream-session-btn.active {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.stream-watch-btn {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #10b981;
+}
+
+.stream-watch-btn:hover:not(:disabled) {
+    background: rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.6);
+}
+
+.stream-watch-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.stream-watch-btn.active {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.stream-copy-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.stream-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.72rem;
+    font-family: monospace;
+}
+
+.stream-copy-btn {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-md);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.stream-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.stream-hint {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.5;
+    padding: var(--spacing-sm);
+    background: rgba(59, 130, 246, 0.08);
+    border-left: 3px solid rgba(59, 130, 246, 0.5);
+    border-radius: var(--radius-sm);
+}
+
+.stream-hint p {
+    margin: 0 0 4px;
+}
+
+.stream-hint p:last-child {
+    margin-bottom: 0;
+}
+
+.stream-note {
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 1.45;
+    padding: var(--spacing-sm);
+    background: rgba(245, 158, 11, 0.06);
+    border-left: 3px solid rgba(245, 158, 11, 0.4);
+    border-radius: var(--radius-sm);
+}
+
+/* Indikator live pada tombol Stream di controls bar */
+.control-btn.stream-live {
+    position: relative;
+}
+
+.control-btn.stream-live::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+    animation: streamPulse 1s ease-in-out infinite;
+}
+
+@media (max-width: 768px) {
+    .stream-panel {
+        width: calc(100% - var(--spacing-md) * 2);
+        left: var(--spacing-md);
+        right: var(--spacing-md);
+    }
+}
+

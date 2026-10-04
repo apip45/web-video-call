@@ -10,6 +10,7 @@ const Room = require('../models/Room');
 const User = require('../models/User');
 const Stats = require('../models/Stats');
 const Settings = require('../models/Settings');
+const streamRegistry = require('../services/streamRegistry');
 const jwt = require('jsonwebtoken');
 
 // Store for room cleanup timers
@@ -220,6 +221,8 @@ const setupSocketHandlers = (io) => {
                     isInitiator: !otherParticipant,
                     userRole: socket.userRole,
                     isAdmin: socket.userRole === 'admin',
+                    // State stream MediaMTX (agar user yang baru join langsung tahu)
+                    streamLive: streamRegistry.getLive(roomId),
                     // Tell the joining user about the already-present participant.
                     // This is critical for reconnect: when the rejoining user receives
                     // an offer from the staying peer, they already know who to target
@@ -502,6 +505,34 @@ const setupSocketHandlers = (io) => {
                 });
             } catch (error) {
                 console.error(`[Socket] ❌ Screen share status error: ${error.message}`);
+            }
+        });
+
+        // =========================================================================
+        // STREAM SESSION (MediaMTX / OBS)
+        // =========================================================================
+        socket.on('stream-session-status', (data) => {
+            try {
+                const roomId = data?.roomId || socket.roomId;
+                if (!roomId) return;
+
+                const active = Boolean(data?.active);
+
+                if (active) {
+                    streamRegistry.startSession(roomId, socket.id);
+                } else {
+                    streamRegistry.stopSession(roomId, socket.id);
+                }
+
+                console.log(`[Socket] 📡 Stream session ${active ? 'STARTED' : 'STOPPED'} by ${socket.username} (room ${roomId})`);
+
+                socket.to(roomId).emit('stream-session-status', {
+                    socketId: socket.id,
+                    username: socket.username,
+                    active
+                });
+            } catch (error) {
+                console.error(`[Socket] ❌ Stream session status error: ${error.message}`);
             }
         });
 
@@ -1101,6 +1132,13 @@ async function handleLeaveRoom(socket, io, roomId) {
             // Cleanup ring state where this socket is target in this room
             ringStateByTarget.delete(`${roomId}:${socket.id}`);
 
+            // Cleanup stream session jika socket ini adalah streamer
+            const wasStreamer = streamRegistry.sessionByRoom.get(roomId) === socket.id;
+            if (wasStreamer) {
+                streamRegistry.sessionByRoom.delete(roomId);
+                console.log(`[Socket] 📡 Stream session cleared (streamer left): room ${roomId}`);
+            }
+
             // Remove participant
             const removed = room.removeParticipant(socket.id);
             room.lastActivity = new Date();
@@ -1115,6 +1153,14 @@ async function handleLeaveRoom(socket, io, roomId) {
                 username: socket.username,
                 participantCount: room.participants.length
             });
+
+            if (wasStreamer) {
+                socket.to(roomId).emit('stream-session-status', {
+                    socketId: socket.id,
+                    username: socket.username,
+                    active: false
+                });
+            }
 
             console.log(`[Socket] 👥 Room ${roomId} participants: ${room.participants.length}/2`);
 

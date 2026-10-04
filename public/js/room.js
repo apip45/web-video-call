@@ -38,6 +38,15 @@
     let prevBytesReceived = 0;
     let prevStatsTime = 0;
 
+    // MediaMTX stream state (OBS -> MediaMTX -> WHEP)
+    let whepClient = null;             // WhepClient instance saat menonton
+    let remoteP2PStream = null;        // Stream kamera lawan via P2P (untuk restore)
+    let isStreamLive = false;          // Stream OBS sedang live di MediaMTX
+    let isMyStreamSession = false;     // Kita yang mengaktifkan sesi stream
+    let isWatchingStream = false;      // Sedang menonton WHEP
+    let streamSharerSocketId = null;   // socketId streamer (dari server)
+    let isMicSuppressedByStream = false; // Mic P2P dimatikan sementara (diambil OBS)
+
     // Ring notice (admin -> user)
     const RING_DEFAULT_DURATION_MS = 5000;
     const RING_ACK_TIMEOUT_MS = 7000;
@@ -78,6 +87,8 @@
         mirrorBtn: document.getElementById('mirrorBtn'),
         switchCameraBtn: document.getElementById('switchCameraBtn'),
         screenShareBtn: document.getElementById('screenShareBtn'),
+        streamBtn: document.getElementById('streamBtn'),
+        streamPanel: document.getElementById('streamPanel'),
         hidePipBtn: document.getElementById('hidePipBtn'),
         endCallBtn: document.getElementById('endCallBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
@@ -126,6 +137,9 @@
 
             // Setup UI event listeners
             setupEventListeners();
+
+            // Initialize MediaMTX stream feature (OBS)
+            initStreamFeature();
 
             // Make PIP draggable
             makePIPDraggable();
@@ -234,6 +248,11 @@
         // Screen share status
         socket.on('screen-share-status', handleRemoteScreenShare);
 
+        // MediaMTX stream (OBS)
+        socket.on('stream-session-status', handleRemoteStreamSession);
+        socket.on('stream-available', handleStreamAvailable);
+        socket.on('stream-unavailable', handleStreamUnavailable);
+
         // Reconnection
         socket.on('reconnect-peer', handleReconnectPeer);
         socket.on('reconnect-failed', handleReconnectFailed);
@@ -302,6 +321,15 @@
 
             onRemoteStream: (stream) => {
                 console.log('[Room] 📥 Remote stream received');
+                // Simpan stream P2P untuk restore setelah stream OBS berhenti
+                remoteP2PStream = stream;
+
+                // Jangan timpa tampilan jika sedang menonton stream OBS
+                if (isWatchingStream) {
+                    console.log('[Room] 📡 Mengabaikan set srcObject (sedang menonton stream OBS)');
+                    return;
+                }
+
                 elements.remoteVideo.srcObject = stream;
                 hideWaitingState();
                 hideConnectionStatus();
@@ -409,6 +437,27 @@
         console.log(`[Room] 🎯 Mode: ${ROOM_DATA.webrtcMode || 'mesh'}`);
 
         webrtc.isInitiator = data.isInitiator;
+
+        // MediaMTX: jika stream sudah live saat kita join, langsung tonton
+        if (data.streamLive) {
+            console.log('[Room] 📡 Stream OBS sudah live saat join');
+            isStreamLive = true;
+            streamSharerSocketId = data.streamLive.sharerSocketId || null;
+
+            const iAmSharer = isMyStreamSession ||
+                (streamSharerSocketId && streamSharerSocketId === mySocketId);
+
+            if (iAmSharer) {
+                setStreamerMicSuppressed(true);
+            } else {
+                setTimeout(() => {
+                    if (isStreamLive) startStreamPlayback();
+                }, 800);
+            }
+            updateStreamUI();
+        } else {
+            updateStreamUI();
+        }
 
         // Handle based on WebRTC mode
         if (ROOM_DATA.webrtcMode === 'sfu') {
@@ -600,12 +649,23 @@
         // Reset admin camera control state
         isUserCameraDisabled = false;
 
-        // Reset remote video
-        elements.remoteVideo.srcObject = null;
+        // MediaMTX: simpan status stream; OBS bisa tetap live walau peer P2P keluar
+        if (streamSharerSocketId && streamSharerSocketId === data.socketId) {
+            console.log('[Room] 📡 Streamer (P2P) keluar — stream OBS mungkin masih live');
+            streamSharerSocketId = null;
+        }
+        remoteP2PStream = null;
+
+        // Reset remote video (kecuali sedang menonton stream OBS)
+        if (!isWatchingStream) {
+            elements.remoteVideo.srcObject = null;
+        }
         elements.remoteUsername.textContent = 'Menunggu...';
 
-        // Show waiting state
-        showWaitingState();
+        // Show waiting state (kecuali sedang menonton stream OBS)
+        if (!isWatchingStream) {
+            showWaitingState();
+        }
 
         // Close peer connection and reset state
         webrtc.closePeerConnection();
@@ -2148,7 +2208,13 @@
 
     window.toggleMic = function() {
         if (!webrtc) return;
-        
+
+        // Saat stream OBS live, mikrofon web dikendalikan OBS (hindari audio dobel)
+        if (isMicSuppressedByStream) {
+            showToast('🎤 Mikrofon sedang diambil alih OBS selama stream aktif', 'warning');
+            return;
+        }
+
         const isMuted = webrtc.toggleMute();
         
         if (isMuted) {
@@ -2317,6 +2383,19 @@
         }
         prevBytesSent = 0; prevBytesReceived = 0; prevStatsTime = 0;
         
+        // MediaMTX: hentikan playback dan sesi stream sebelum keluar
+        if (isMyStreamSession && socket) {
+            socket.emit('stream-session-status', { roomId: ROOM_DATA.roomId, active: false });
+            isMyStreamSession = false;
+        }
+        if (whepClient) {
+            whepClient.stop();
+            whepClient = null;
+        }
+        isWatchingStream = false;
+        isStreamLive = false;
+        setStreamerMicSuppressed(false);
+
         if (socket) {
             socket.emit('leave-room', { roomId: ROOM_DATA.roomId });
         }
@@ -2633,6 +2712,368 @@
         } else {
             elements.fullscreenBtn.classList.remove('active');
         }
+    }
+
+    // ==========================================================================
+    // MEDIAMTX STREAM (OBS)
+    // ==========================================================================
+
+    /**
+     * Ambil konfigurasi MediaMTX dari server
+     * @returns {Object|null}
+     */
+    function getStreamConfig() {
+        return ROOM_DATA.mediaMtx || null;
+    }
+
+    /**
+     * Apakah fitur stream diaktifkan server
+     * @returns {boolean}
+     */
+    function isStreamEnabled() {
+        const cfg = getStreamConfig();
+        return Boolean(cfg && cfg.enabled && cfg.whepUrl);
+    }
+
+    /**
+     * Isi field WHIP URL + token di panel
+     */
+    function populateStreamFields() {
+        const cfg = getStreamConfig();
+        if (!cfg) return;
+
+        const whipUrlEl = document.getElementById('streamWhipUrl');
+        const tokenEl = document.getElementById('streamToken');
+        if (whipUrlEl) whipUrlEl.value = cfg.whipUrl || '';
+        if (tokenEl) tokenEl.value = cfg.publishToken || '';
+    }
+
+    /**
+     * Update seluruh UI stream (status, tombol, indikator)
+     */
+    function updateStreamUI() {
+        if (!isStreamEnabled()) return;
+
+        const dot = document.getElementById('streamStatusDot');
+        const text = document.getElementById('streamStatusText');
+        const sessionBtn = document.getElementById('streamSessionBtn');
+        const watchBtn = document.getElementById('streamWatchBtn');
+
+        if (text) {
+            if (isStreamLive) {
+                text.textContent = isWatchingStream ? 'LIVE — sedang ditonton' : 'LIVE';
+            } else if (isMyStreamSession) {
+                text.textContent = 'Menunggu OBS mulai streaming...';
+            } else {
+                text.textContent = 'Belum aktif';
+            }
+        }
+
+        if (dot) {
+            dot.classList.toggle('live', isStreamLive);
+            dot.classList.toggle('waiting', !isStreamLive && isMyStreamSession);
+        }
+
+        if (sessionBtn) {
+            sessionBtn.textContent = isMyStreamSession ? 'Matikan Sesi Stream' : 'Aktifkan Sesi Stream';
+            sessionBtn.classList.toggle('active', isMyStreamSession);
+        }
+
+        if (watchBtn) {
+            watchBtn.disabled = !isStreamLive || isMyStreamSession;
+            watchBtn.textContent = isWatchingStream ? 'Stop Tonton' : 'Tonton Stream';
+            watchBtn.classList.toggle('active', isWatchingStream);
+        }
+
+        if (elements.streamBtn) {
+            elements.streamBtn.classList.toggle('stream-live', isStreamLive);
+        }
+    }
+
+    /**
+     * Tampilkan/sembunyikan panel stream
+     */
+    window.toggleStreamPanel = function() {
+        const panel = elements.streamPanel;
+        if (!panel) return;
+
+        if (panel.classList.contains('visible')) {
+            panel.classList.remove('visible');
+            if (elements.streamBtn) elements.streamBtn.classList.remove('active');
+        } else {
+            panel.classList.add('visible');
+            if (elements.streamBtn) elements.streamBtn.classList.add('active');
+            populateStreamFields();
+            updateStreamUI();
+            refreshStreamStatus();
+        }
+    };
+
+    /**
+     * Cek status stream ke server (fallback bila hook tidak sampai)
+     */
+    async function refreshStreamStatus() {
+        if (!isStreamEnabled()) return;
+
+        try {
+            const res = await fetch(`/api/mediamtx/status/${encodeURIComponent(ROOM_DATA.roomId)}`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            if (data.live && !isStreamLive) {
+                handleStreamAvailable({ roomId: ROOM_DATA.roomId, path: data.path, sharerSocketId: null });
+            } else if (!data.live && isStreamLive) {
+                handleStreamUnavailable({ roomId: ROOM_DATA.roomId, path: data.path });
+            }
+        } catch (error) {
+            console.warn('[Room] ⚠️ Gagal cek status stream:', error.message);
+        }
+    }
+
+    /**
+     * Aktifkan/matikan sesi stream (memberi tahu server + peer)
+     */
+    window.toggleStreamSession = function() {
+        if (!isStreamEnabled()) {
+            showToast('Fitur stream belum aktif di server', 'warning');
+            return;
+        }
+
+        isMyStreamSession = !isMyStreamSession;
+
+        if (socket) {
+            socket.emit('stream-session-status', {
+                roomId: ROOM_DATA.roomId,
+                active: isMyStreamSession
+            });
+        }
+
+        if (isMyStreamSession) {
+            showToast('📡 Sesi stream aktif — jalankan OBS untuk mulai', 'info');
+        } else {
+            showToast('Sesi stream dimatikan', 'info');
+            if (isWatchingStream) stopStreamPlayback();
+            // Jika OBS masih live, mic tetap diambil alih sampai stream benar-benar berhenti
+            if (!isStreamLive) {
+                setStreamerMicSuppressed(false);
+                streamSharerSocketId = null;
+            }
+        }
+
+        updateStreamUI();
+    };
+
+    /**
+     * Tonton/berhenti menonton stream via WHEP
+     */
+    window.toggleStreamWatch = async function() {
+        if (isWatchingStream) {
+            stopStreamPlayback();
+            return;
+        }
+        if (!isStreamLive) {
+            showToast('Stream belum live', 'warning');
+            return;
+        }
+        await startStreamPlayback();
+    };
+
+    /**
+     * Salin field ke clipboard
+     * @param {string} elementId
+     * @param {string} message
+     */
+    window.copyStreamField = function(elementId, message) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        navigator.clipboard.writeText(el.value).then(() => {
+            showToast(message || 'Disalin!', 'success');
+        }).catch(() => {
+            showToast('Gagal menyalin', 'error');
+        });
+    };
+
+    /**
+     * Mulai playback WHEP
+     * @returns {Promise<void>}
+     */
+    async function startStreamPlayback() {
+        const cfg = getStreamConfig();
+        if (!cfg || !isStreamLive || isWatchingStream) return;
+
+        // Pastikan instance lama dibersihkan
+        if (whepClient) {
+            await whepClient.stop();
+            whepClient = null;
+        }
+
+        console.log('[Room] ▶️ Memulai playback stream OBS...');
+
+        whepClient = new WhepClient({
+            url: cfg.whepUrl,
+            token: cfg.readToken,
+            iceServers: ROOM_DATA.iceServers || [],
+            onTrack: (stream) => {
+                elements.remoteVideo.srcObject = stream;
+                hideWaitingState();
+                hideConnectionStatus();
+                elements.remoteVideo.play().catch(err => {
+                    console.warn('[Room] ⚠️ play() stream blocked:', err.message);
+                });
+            },
+            onStateChange: (state) => {
+                if (state === 'failed') {
+                    console.warn('[Room] ⚠️ Koneksi WHEP gagal, mencoba ulang...');
+                    showToast('Koneksi stream terputus, mencoba ulang...', 'warning');
+                    stopStreamPlayback();
+                    setTimeout(() => {
+                        if (isStreamLive && !isWatchingStream) startStreamPlayback();
+                    }, 2000);
+                }
+            },
+            onError: (error) => {
+                console.error('[Room] ❌ WHEP error:', error.message);
+            }
+        });
+
+        isWatchingStream = true;
+        updateStreamUI();
+
+        try {
+            await whepClient.start();
+            showToast('▶️ Menonton stream OBS', 'success');
+        } catch (error) {
+            isWatchingStream = false;
+            updateStreamUI();
+            showToast('Gagal menonton stream: ' + error.message, 'error');
+        }
+    }
+
+    /**
+     * Hentikan playback WHEP dan kembalikan video kamera P2P
+     * @param {boolean} [restoreCamera=true]
+     */
+    async function stopStreamPlayback(restoreCamera = true) {
+        isWatchingStream = false;
+
+        if (whepClient) {
+            await whepClient.stop();
+            whepClient = null;
+        }
+
+        if (restoreCamera) {
+            elements.remoteVideo.srcObject = remoteP2PStream || null;
+            if (remoteP2PStream) {
+                elements.remoteVideo.play().catch(() => {});
+            }
+        }
+
+        updateStreamUI();
+    }
+
+    /**
+     * Handler server: stream OBS mulai live
+     * @param {{ roomId: string, path: string, sharerSocketId: string|null }} data
+     */
+    function handleStreamAvailable(data) {
+        console.log(`[Room] 📡 Stream available: ${data?.path}`);
+        isStreamLive = true;
+        streamSharerSocketId = data?.sharerSocketId || streamSharerSocketId;
+
+        const iAmSharer = isMyStreamSession ||
+            (streamSharerSocketId && streamSharerSocketId === mySocketId);
+
+        if (iAmSharer) {
+            setStreamerMicSuppressed(true);
+            showToast('🔴 Stream OBS live', 'success');
+        } else {
+            showToast('📡 Stream lawan bicara live — menonton...', 'info');
+            startStreamPlayback();
+        }
+
+        updateStreamUI();
+    }
+
+    /**
+     * Handler server: stream OBS berhenti
+     * @param {{ roomId: string, path: string }} data
+     */
+    async function handleStreamUnavailable(data) {
+        console.log(`[Room] 📡 Stream unavailable: ${data?.path}`);
+
+        const wasWatching = isWatchingStream;
+        isStreamLive = false;
+
+        if (wasWatching) {
+            await stopStreamPlayback(true);
+        }
+
+        setStreamerMicSuppressed(false);
+        streamSharerSocketId = null;
+        updateStreamUI();
+
+        if (wasWatching) {
+            showToast('📹 Stream OBS berakhir — kembali ke kamera', 'info');
+        }
+    }
+
+    /**
+     * Handler socket: peer mengaktifkan/mematikan sesi stream
+     * @param {{ socketId: string, username: string, active: boolean }} data
+     */
+    function handleRemoteStreamSession(data) {
+        console.log(`[Room] 📡 Peer stream session: ${data.username} ${data.active ? 'aktif' : 'berhenti'}`);
+
+        if (data.active) {
+            showToast(`📡 ${data.username} menyiapkan stream OBS`, 'info');
+        }
+    }
+
+    /**
+     * Matikan/nyalakan mic P2P sementara (diambil alih OBS)
+     * @param {boolean} suppressed
+     */
+    function setStreamerMicSuppressed(suppressed) {
+        if (!webrtc || !webrtc.localStream) return;
+
+        const audioTrack = webrtc.localStream.getAudioTracks()[0];
+        if (!audioTrack) return;
+
+        if (suppressed) {
+            if (isMicSuppressedByStream) return;
+            isMicSuppressedByStream = true;
+            audioTrack.enabled = false;
+            elements.micBtn.classList.add('muted');
+            elements.localMuteIndicator.classList.remove('hidden');
+            console.log('[Room] 🎤 Mic P2P dinonaktifkan sementara (diambil alih OBS)');
+            showToast('🎤 Mikrofon diambil alih OBS selama stream', 'info');
+        } else {
+            if (!isMicSuppressedByStream) return;
+            isMicSuppressedByStream = false;
+            audioTrack.enabled = !webrtc.isMuted;
+            if (webrtc.isMuted) {
+                elements.micBtn.classList.add('muted');
+                elements.localMuteIndicator.classList.remove('hidden');
+            } else {
+                elements.micBtn.classList.remove('muted');
+                elements.localMuteIndicator.classList.add('hidden');
+            }
+            console.log('[Room] 🎤 Mic P2P dikembalikan ke kontrol web');
+        }
+    }
+
+    /**
+     * Inisialisasi fitur stream (populate field + status awal)
+     */
+    function initStreamFeature() {
+        if (!isStreamEnabled()) return;
+
+        console.log('[Room] 📡 MediaMTX stream feature enabled');
+        console.log(`[Room] 📡 WHIP: ${getStreamConfig().whipUrl}`);
+
+        populateStreamFields();
+        updateStreamUI();
     }
 
     // ==========================================================================

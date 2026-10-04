@@ -11,6 +11,7 @@ const { v4: uuidv4 } = require('uuid');
 const Room = require('../models/Room');
 const { isAuthenticated } = require('../middleware/auth');
 const { getIceServers, getWebRTCMode, getIonSFUConfig } = require('../config/webrtc');
+const { getRoomStreamConfig } = require('../config/mediamtx');
 
 /**
  * GET /
@@ -125,6 +126,9 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
         const webrtcMode = getWebRTCMode();
         const ionSFUConfig = getIonSFUConfig();
 
+        // Get MediaMTX stream config (WHIP/WHEP + token per room)
+        const mediaMtxConfig = getRoomStreamConfig(roomId);
+
         // Get global video settings
         const Settings = require('../models/Settings');
         const videoSettings = await Settings.getVideoSettings();
@@ -149,6 +153,8 @@ router.get('/room/:roomId', isAuthenticated, async (req, res) => {
             adminControlEnabled,
             webrtcMode: webrtcMode,
             ionSFUConfig: JSON.stringify(ionSFUConfig),
+            mediaMtxConfig: JSON.stringify(mediaMtxConfig),
+            mediaMtxEnabled: mediaMtxConfig.enabled,
             videoSettings: JSON.stringify({
                 ...videoSettings,
                 width: resolutionDimensions.width,
