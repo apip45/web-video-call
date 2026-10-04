@@ -55,7 +55,7 @@
     right: 0;
     padding: var(--spacing-lg);
     padding-top: calc(var(--spacing-lg) + env(safe-area-inset-top));
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent);
+    background: transparent;
     pointer-events: none;
     z-index: 5;
 }
@@ -666,11 +666,12 @@
     position: fixed;
     top: var(--spacing-lg);
     right: var(--spacing-md);
-    left: var(--spacing-md);
     z-index: 50;
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
     gap: var(--spacing-sm);
+    max-width: 100%;
     pointer-events: none;
 }
 
@@ -678,7 +679,9 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    padding: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    width: fit-content;
+    max-width: min(360px, calc(100vw - var(--spacing-md) * 2));
     background: rgba(0, 0, 0, 0.9);
     border-radius: var(--radius-md);
     color: white;
